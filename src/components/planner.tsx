@@ -1,14 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlaskConical, Loader2, Map as MapIcon, SlidersHorizontal } from "lucide-react";
 import { ResultPanel } from "@/components/result-panel";
 import { SettingsPanel } from "@/components/settings-panel";
@@ -55,18 +48,6 @@ interface Props {
 
 type Tab = "result" | "settings";
 
-function subscribeNoop() {
-  return () => {};
-}
-
-export function Planner({ routes }: Props) {
-  const isClient = useSyncExternalStore(subscribeNoop, () => true, () => false);
-  if (!isClient) {
-    return <Skeleton className="min-h-[60vh] w-full flex-1 rounded-none" />;
-  }
-  return <PlannerReady routes={routes} />;
-}
-
 function initialPlannerState(routes: Route[]) {
   const session = loadSession();
   const rules = loadDiscountRules();
@@ -91,7 +72,7 @@ function initialPlannerState(routes: Route[]) {
   };
 }
 
-function PlannerReady({ routes }: Props) {
+export function Planner({ routes }: Props) {
   const [boot] = useState(() => initialPlannerState(routes));
   const [routeId, setRouteId] = useState(boot.routeId);
   const [origin, setOrigin] = useState<NamedPlace | null>(boot.origin);
@@ -405,3 +386,5 @@ function TabButton({
     </button>
   );
 }
+
+export default Planner;

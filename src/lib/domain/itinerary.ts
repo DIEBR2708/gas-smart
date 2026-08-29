@@ -109,7 +109,10 @@ export function planItinerary(input: ItineraryInput): ItineraryStop[] {
       break;
     }
 
+    const visited = new Set(stops.map((stop) => stop.option.station.id));
     const onward = sorted.filter((option) => {
+      if (visited.has(option.station.id)) return false;
+      if (option.station.id === current.station.id) return false;
       if (option.detour.alongRouteM <= along + 80) return false;
       const need =
         travelKmBetween(

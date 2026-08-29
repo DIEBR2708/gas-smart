@@ -130,15 +130,16 @@ function generateForSeed(
       : BRAND_POOL[Math.floor(rand() * BRAND_POOL.length)];
     const isSelfService = isRestArea ? false : rand() < 0.62;
 
-    const nearestName =
-      seed.waypoints.reduce<{ name: string; d: number }>(
-        (acc, wp) => {
-          if (!wp.name) return acc;
-          const d = Math.hypot(wp.lat - lat, wp.lng - lng);
-          return d < acc.d ? { name: wp.name, d } : acc;
-        },
-        { name: seed.summary, d: Number.POSITIVE_INFINITY },
-      ).name;
+    const nearest = seed.waypoints.reduce<{ name: string; d: number }>(
+      (acc, wp) => {
+        if (!wp.name) return acc;
+        const d = Math.hypot(wp.lat - lat, wp.lng - lng);
+        return d < acc.d ? { name: wp.name, d } : acc;
+      },
+      { name: `${Math.round(alongM / 1000)}km`, d: Number.POSITIVE_INFINITY },
+    );
+    // 0.12도 ≈ 13km. 그보다 멀면 지명보다 경로상 위치를 쓴다.
+    const nearestName = nearest.d < 0.12 ? nearest.name : `${Math.round(alongM / 1000)}km`;
 
     const region = regionAdjustment(lat);
     const highwayPremium = isRestArea ? 118 : 0;

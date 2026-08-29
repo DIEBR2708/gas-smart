@@ -27,7 +27,7 @@ export function FuelTimeline({ route, vehicle, option, itinerary = [] }: Props) 
   const multi = itinerary.length >= 2;
   const extraKm = multi
     ? itinerary.reduce((sum, stop) => sum + stop.option.detour.extraDistanceM, 0) /
-      1000
+      2000
     : option
       ? option.detour.extraDistanceM / 1000
       : 0;
@@ -55,12 +55,9 @@ export function FuelTimeline({ route, vehicle, option, itinerary = [] }: Props) 
       markers.push({ km, l: stop.fuelOnDepartL });
     }
     const last = itinerary[itinerary.length - 1];
-    const remainKm = Math.max(
-      0,
-      totalKm -
-        (last.option.detour.alongRouteM / 1000 +
-          last.option.detour.extraDistanceM / 2000),
-    );
+    const remainKm =
+      Math.max(0, route.distanceM - last.option.detour.alongRouteM) / 1000 +
+      last.option.detour.extraDistanceM / 2000;
     points.push({ km: totalKm, l: last.fuelOnDepartL - remainKm / e });
   } else if (option) {
     const alongKm = option.detour.alongRouteM / 1000 + extraKm / 2;
