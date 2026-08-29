@@ -1,6 +1,6 @@
 "use client";
 
-import type { RankedOption, Route, Vehicle } from "@/lib/domain/types";
+import type { ItineraryStop, RankedOption, Route, Vehicle } from "@/lib/domain/types";
 import { liters } from "@/lib/format";
 
 /**
@@ -15,33 +15,61 @@ interface Props {
   route: Route;
   vehicle: Vehicle;
   option: RankedOption | null;
+  itinerary?: ItineraryStop[];
 }
 
 const W = 320;
 const H = 84;
 const PAD = { top: 10, right: 8, bottom: 16, left: 8 };
 
-export function FuelTimeline({ route, vehicle, option }: Props) {
+export function FuelTimeline({ route, vehicle, option, itinerary = [] }: Props) {
   const e = vehicle.kmPerLiter;
-  const detourKm = option ? option.detour.extraDistanceM / 1000 : 0;
-  const totalKm = route.distanceM / 1000 + detourKm;
-  const alongKm = option ? option.detour.alongRouteM / 1000 + detourKm / 2 : null;
+  const multi = itinerary.length >= 2;
+  const extraKm = multi
+    ? itinerary.reduce((sum, stop) => sum + stop.option.detour.extraDistanceM, 0) /
+      1000
+    : option
+      ? option.detour.extraDistanceM / 1000
+      : 0;
+  const totalKm = route.distanceM / 1000 + extraKm;
 
   const yMax = vehicle.tankCapacityL;
   const plotW = W - PAD.left - PAD.right;
   const plotH = H - PAD.top - PAD.bottom;
 
-  const x = (km: number) => PAD.left + (km / totalKm) * plotW;
+  const x = (km: number) => PAD.left + (km / Math.max(totalKm, 0.1)) * plotW;
   const y = (l: number) =>
     PAD.top + plotH - (Math.max(0, Math.min(yMax, l)) / yMax) * plotH;
 
   const points: { km: number; l: number }[] = [];
-  if (option && alongKm !== null) {
+  const markers: { km: number; l: number }[] = [];
+
+  if (multi) {
+    points.push({ km: 0, l: vehicle.currentFuelL });
+    for (const stop of itinerary) {
+      const km =
+        stop.option.detour.alongRouteM / 1000 +
+        stop.option.detour.extraDistanceM / 2000;
+      points.push({ km, l: stop.fuelOnArrivalL });
+      points.push({ km, l: stop.fuelOnDepartL });
+      markers.push({ km, l: stop.fuelOnDepartL });
+    }
+    const last = itinerary[itinerary.length - 1];
+    const remainKm = Math.max(
+      0,
+      totalKm -
+        (last.option.detour.alongRouteM / 1000 +
+          last.option.detour.extraDistanceM / 2000),
+    );
+    points.push({ km: totalKm, l: last.fuelOnDepartL - remainKm / e });
+  } else if (option) {
+    const alongKm = option.detour.alongRouteM / 1000 + extraKm / 2;
     const fuelAtPump = vehicle.currentFuelL - alongKm / e;
     points.push({ km: 0, l: vehicle.currentFuelL });
     points.push({ km: alongKm, l: fuelAtPump });
     points.push({ km: alongKm, l: fuelAtPump + option.litersToBuy });
     points.push({ km: totalKm, l: option.fuelAtDestinationL });
+    markers.push({ km: alongKm, l: fuelAtPump + option.litersToBuy });
   } else {
     points.push({ km: 0, l: vehicle.currentFuelL });
     points.push({ km: totalKm, l: vehicle.currentFuelL - totalKm / e });
@@ -51,14 +79,15 @@ export function FuelTimeline({ route, vehicle, option }: Props) {
   const area = `${PAD.left},${y(0)} ${line} ${x(totalKm)},${y(0)}`;
   const reserveY = y(vehicle.reserveL);
   const dry = points.some((p) => p.l < 0);
+  const destL = points[points.length - 1]?.l ?? 0;
 
   return (
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between text-xs text-muted-foreground">
-        <span>연료 잔량</span>
+        <span>연료 잔량{multi ? ` · ${itinerary.length}회 주유` : ""}</span>
         <span className="font-mono">
-          {option
-            ? `도착 시 ${liters(Math.max(0, option.fuelAtDestinationL))}`
+          {option || multi
+            ? `도착 시 ${liters(Math.max(0, destL))}`
             : `무주유 시 ${liters(vehicle.currentFuelL - totalKm / e)}`}
         </span>
       </div>
@@ -111,25 +140,20 @@ export function FuelTimeline({ route, vehicle, option }: Props) {
           strokeLinejoin="round"
         />
 
-        {option && alongKm !== null && (
-          <>
+        {markers.map((mark, index) => (
+          <g key={`${mark.km}-${index}`}>
             <line
-              x1={x(alongKm)}
-              x2={x(alongKm)}
+              x1={x(mark.km)}
+              x2={x(mark.km)}
               y1={PAD.top}
               y2={y(0)}
               stroke="#e2e8f0"
               strokeWidth="1"
               opacity="0.35"
             />
-            <circle
-              cx={x(alongKm)}
-              cy={y(vehicle.currentFuelL - alongKm / e + option.litersToBuy)}
-              r="3"
-              fill="#f5b544"
-            />
-          </>
-        )}
+            <circle cx={x(mark.km)} cy={y(mark.l)} r="3" fill="#f5b544" />
+          </g>
+        ))}
 
         <line
           x1={PAD.left}

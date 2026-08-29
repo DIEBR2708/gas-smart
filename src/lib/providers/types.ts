@@ -3,10 +3,13 @@ import type { Detour, FuelKind, LatLng, NamedPlace, Route, Station } from "@/lib
 export interface StationQuery {
   fuelKind: FuelKind;
   /**
-   * 경로 중심선에서 이 거리(m) 안쪽의 주유소만 요청한다.
-   * 오피넷 `aroundAll.do`는 반경 5,000m가 상한이므로 그보다 크게 잡아도 소용없다.
+   * 경로 중심선에서 이 수직 거리(m) 안쪽을 빈틈 없이 덮어야 한다.
+   *
+   * 검색 반경이 아니라 회랑의 반폭이다. 프로바이더는 이 값에서 샘플 간격을
+   * 역산해(`planCorridorSearch`) 호출 횟수를 정한다. 오피넷 반경 상한이
+   * 5,000m이므로 그보다 넓은 회랑은 덮을 수 없다.
    */
-  corridorRadiusM: number;
+  corridorHalfWidthM: number;
 }
 
 export interface StationProvider {

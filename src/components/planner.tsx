@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { FlaskConical, Loader2, Map as MapIcon, SlidersHorizontal } from "lucide-react";
 import { ResultPanel } from "@/components/result-panel";
 import { SettingsPanel } from "@/components/settings-panel";
@@ -12,8 +12,28 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  cachePlan,
+  loadCachedPlan,
+  loadDiscountRules,
+  loadFills,
+  loadReports,
+  loadSession,
+  saveDiscountRules,
+  saveFills,
+  saveReports,
+  saveSession,
+  newId,
+} from "@/lib/client-store";
 import { DEFAULT_PREFERENCES, DEFAULT_VEHICLE } from "@/lib/domain/fixtures";
-import type { Preferences, Route, Vehicle } from "@/lib/domain/types";
+import type {
+  NamedPlace,
+  Preferences,
+  ReportKind,
+  Route,
+  StationReport,
+  Vehicle,
+} from "@/lib/domain/types";
 import { fetchPlan, type PlanResponse } from "@/lib/plan-client";
 import { cn } from "@/lib/utils";
 
@@ -28,32 +48,93 @@ interface Props {
 
 type Tab = "result" | "settings";
 
+function subscribeNoop() {
+  return () => {};
+}
+
 export function Planner({ routes }: Props) {
-  const [routeId, setRouteId] = useState(routes[0].id);
-  const [vehicle, setVehicle] = useState<Vehicle>(DEFAULT_VEHICLE);
-  const [preferences, setPreferences] =
-    useState<Preferences>(DEFAULT_PREFERENCES);
+  const isClient = useSyncExternalStore(subscribeNoop, () => true, () => false);
+  if (!isClient) {
+    return <Skeleton className="min-h-[60vh] w-full flex-1 rounded-none" />;
+  }
+  return <PlannerReady routes={routes} />;
+}
+
+function initialPlannerState(routes: Route[]) {
+  const session = loadSession();
+  const rules = loadDiscountRules();
+  const sample = routes.find((r) => r.id === session?.routeId) ?? routes[0];
+  const parsedDepart = session?.departAt ? new Date(session.departAt) : null;
+  return {
+    routeId: sample.id,
+    origin: session?.origin ?? sample.origin,
+    destination: session?.destination ?? sample.destination,
+    departAt:
+      parsedDepart && !Number.isNaN(parsedDepart.getTime())
+        ? parsedDepart
+        : new Date(),
+    vehicle: session?.vehicle ?? DEFAULT_VEHICLE,
+    preferences: {
+      ...DEFAULT_PREFERENCES,
+      ...session?.preferences,
+      discountRules: session?.preferences.discountRules ?? rules,
+    },
+    fills: loadFills(),
+    reports: loadReports(),
+  };
+}
+
+function PlannerReady({ routes }: Props) {
+  const [boot] = useState(() => initialPlannerState(routes));
+  const [routeId, setRouteId] = useState(boot.routeId);
+  const [origin, setOrigin] = useState<NamedPlace | null>(boot.origin);
+  const [destination, setDestination] = useState<NamedPlace | null>(
+    boot.destination,
+  );
+  const [departAt, setDepartAt] = useState(boot.departAt);
+  const [vehicle, setVehicle] = useState<Vehicle>(boot.vehicle);
+  const [preferences, setPreferences] = useState<Preferences>(boot.preferences);
+  const [fills, setFills] = useState(boot.fills);
+  const [reports, setReports] = useState(boot.reports);
   const [data, setData] = useState<PlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fromCache, setFromCache] = useState(false);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("result");
 
   const requestSeq = useRef(0);
 
   useEffect(() => {
+    saveSession({
+      vehicle,
+      preferences,
+      routeId,
+      origin,
+      destination,
+      departAt: departAt.toISOString(),
+    });
+    saveDiscountRules(preferences.discountRules);
+    saveFills(fills);
+    saveReports(reports);
+  }, [vehicle, preferences, routeId, origin, destination, departAt, fills, reports]);
+
+  useEffect(() => {
     const controller = new AbortController();
     const seq = ++requestSeq.current;
 
-    // 슬라이더를 끌 때마다 요청이 나가면 안 된다. 실제 API에서는 쿼터가 마른다.
     const timer = setTimeout(() => {
       setLoading(true);
       fetchPlan(
         {
           routeId,
+          origin: origin ?? undefined,
+          destination: destination ?? undefined,
           vehicle,
           preferences,
-          departAt: new Date().toISOString(),
+          departAt: departAt.toISOString(),
+          reports,
         },
         controller.signal,
       )
@@ -61,18 +142,38 @@ export function Planner({ routes }: Props) {
           if (seq !== requestSeq.current) return;
           setData(response);
           setError(null);
+          setFromCache(false);
+          setCachedAt(null);
+          cachePlan(response);
           setSelectedId((current) => {
             const stillThere = response.plan.options.some(
               (o) => o.station.id === current,
             );
             return stillThere
               ? current
-              : (response.plan.best?.station.id ?? null);
+              : (response.plan.best?.station.id ??
+                  response.plan.itinerary[0]?.option.station.id ??
+                  null);
           });
         })
         .catch((cause: unknown) => {
           if (controller.signal.aborted || seq !== requestSeq.current) return;
-          setError(cause instanceof Error ? cause.message : "알 수 없는 오류");
+          const message =
+            cause instanceof Error ? cause.message : "알 수 없는 오류";
+          const cached = loadCachedPlan();
+          if (cached) {
+            setData(cached.response);
+            setFromCache(true);
+            setCachedAt(cached.savedAt);
+            setError(message);
+            setSelectedId(
+              cached.response.plan.best?.station.id ??
+                cached.response.plan.itinerary[0]?.option.station.id ??
+                null,
+            );
+          } else {
+            setError(message);
+          }
         })
         .finally(() => {
           if (seq === requestSeq.current) setLoading(false);
@@ -83,17 +184,45 @@ export function Planner({ routes }: Props) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [routeId, vehicle, preferences]);
+  }, [routeId, origin, destination, vehicle, preferences, departAt, reports]);
 
-  const route = useMemo(
-    () => routes.find((r) => r.id === routeId) ?? routes[0],
-    [routes, routeId],
-  );
+  const displayRoute = data?.plan.route ??
+    routes.find((r) => r.id === routeId) ??
+    routes[0];
 
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
     setTab("result");
   }, []);
+
+  const handleSampleRoute = useCallback(
+    (id: string) => {
+      const next = routes.find((r) => r.id === id);
+      if (!next) return;
+      setRouteId(id);
+      setOrigin(next.origin);
+      setDestination(next.destination);
+    },
+    [routes],
+  );
+
+  const handleReport = useCallback(
+    (stationId: string, stationName: string, kind: ReportKind) => {
+      const report: StationReport = {
+        id: newId("rep"),
+        stationId,
+        stationName,
+        kind,
+        note: "",
+        reportedAt: new Date().toISOString(),
+      };
+      setReports((current) => [
+        ...current.filter((item) => item.stationId !== stationId),
+        report,
+      ]);
+    },
+    [],
+  );
 
   const plan = data?.plan ?? null;
   const isSample = data?.dataMode !== "live";
@@ -123,17 +252,23 @@ export function Planner({ routes }: Props) {
           <Tooltip>
             <TooltipTrigger render={<span />}>
               <Badge
-                variant={isSample ? "secondary" : "default"}
+                variant={fromCache ? "destructive" : isSample ? "secondary" : "default"}
                 className="gap-1"
               >
                 <FlaskConical className="size-3" />
-                {isSample ? "샘플 데이터" : "실시간 데이터"}
+                {fromCache
+                  ? "캐시된 계획"
+                  : isSample
+                    ? "샘플 데이터"
+                    : "실시간 데이터"}
               </Badge>
             </TooltipTrigger>
             <TooltipContent className="max-w-72">
-              {isSample
-                ? "오피넷·카카오 API 키가 없어 합성 샘플 데이터로 동작합니다. 계산 로직은 실데이터와 동일합니다."
-                : "오피넷 유가와 카카오모빌리티 경로를 실시간으로 조회하고 있습니다."}
+              {fromCache
+                ? "통신에 실패해 기기에 저장해 둔 마지막 결과를 보여 줍니다."
+                : isSample
+                  ? "오피넷·카카오 API 키가 없어 합성 샘플 데이터로 동작합니다. 계산 로직은 실데이터와 동일합니다."
+                  : "오피넷 유가와 카카오모빌리티 경로를 실시간으로 조회하고 있습니다."}
             </TooltipContent>
           </Tooltip>
         </div>
@@ -142,17 +277,14 @@ export function Planner({ routes }: Props) {
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <div className="relative h-[42vh] min-h-[260px] shrink-0 lg:h-auto lg:min-h-0 lg:flex-1">
           <RouteMap
-            route={route}
+            route={displayRoute}
             options={plan?.options ?? []}
             shapes={data?.shapes ?? {}}
             selectedId={selectedId}
             bestId={plan?.best?.station.id ?? null}
+            itineraryIds={plan?.itinerary.map((stop) => stop.option.station.id) ?? []}
             onSelect={handleSelect}
           />
-          {/*
-            좌하단은 Leaflet 확대 컨트롤(좌상단), 출처 표시(우하단), 그리고
-            개발 모드의 Next 배지와 겹친다. 범례는 우상단에 둔다.
-          */}
           <div className="pointer-events-none absolute top-3 right-3 z-[500] hidden flex-col gap-1 rounded-lg border border-border bg-background/85 px-2.5 py-2 text-[11px] backdrop-blur sm:flex">
             <Legend color="#f5b544" label="최저 실질비용" />
             <Legend color="#4ade80" label="기준선보다 이득" />
@@ -187,20 +319,32 @@ export function Planner({ routes }: Props) {
                 error={error}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
+                fromCache={fromCache}
+                cachedAt={cachedAt}
+                reports={reports}
+                onReport={handleReport}
               />
             ) : (
               <SettingsPanel
                 routes={routes}
                 routeId={routeId}
+                origin={origin}
+                destination={destination}
+                departAt={departAt}
                 vehicle={vehicle}
                 preferences={preferences}
-                onRouteChange={setRouteId}
+                fills={fills}
+                onRouteChange={handleSampleRoute}
+                onOriginChange={setOrigin}
+                onDestinationChange={setDestination}
+                onDepartAtChange={setDepartAt}
                 onVehicleChange={(patch) =>
                   setVehicle((current) => ({ ...current, ...patch }))
                 }
                 onPreferencesChange={(patch) =>
                   setPreferences((current) => ({ ...current, ...patch }))
                 }
+                onFillsChange={setFills}
               />
             )}
           </div>

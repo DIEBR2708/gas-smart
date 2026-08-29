@@ -24,9 +24,17 @@ export function kakaoMapRouteUrl(
   waypoint: NamedPlace,
   destination: NamedPlace,
 ): string {
+  return kakaoMapMultiStopUrl([origin, waypoint, destination]);
+}
+
+/** 다회 주유 일정을 카카오맵 웹 경로로 넘긴다. */
+export function kakaoMapMultiStopUrl(stops: NamedPlace[]): string {
   const leg = (p: NamedPlace) =>
     `${encodeURIComponent(p.name)},${p.lat},${p.lng}`;
-  return `https://map.kakao.com/?map_type=TYPE_MAP&target=car&rt=${leg(origin)}&rt1=${leg(waypoint)}&rt2=${leg(destination)}`;
+  const params = stops.map((stop, index) =>
+    index === 0 ? `rt=${leg(stop)}` : `rt${index}=${leg(stop)}`,
+  );
+  return `https://map.kakao.com/?map_type=TYPE_MAP&target=car&${params.join("&")}`;
 }
 
 /** 주유소 위치를 지도에서 바로 확인하는 링크 */

@@ -1,4 +1,5 @@
 import proj4 from "proj4";
+import { planCorridorSearch } from "@/lib/domain/corridor";
 import {
   cumulativeDistances,
   haversineM,
@@ -87,8 +88,11 @@ export class OpinetStationProvider implements StationProvider {
 
   async findAlongRoute(route: Route, query: StationQuery): Promise<Station[]> {
     const cum = cumulativeDistances(route.polyline);
-    const radiusM = Math.min(Math.round(query.corridorRadiusM), 5000);
-    const samples = sampleAlongRoute(route.polyline, radiusM * 1.4, cum);
+    // 호출 비용은 반경과 무관하므로 항상 상한 반경으로 요청하고,
+    // 원하는 회랑 폭에서 샘플 간격을 역산한다. 호출도 적고 빈틈도 없다.
+    const plan = planCorridorSearch(route.polyline, query.corridorHalfWidthM);
+    const radiusM = Math.round(plan.searchRadiusM);
+    const samples = sampleAlongRoute(route.polyline, plan.intervalM, cum);
 
     const rows = new Map<string, AroundAllRow>();
     // 호출 폭주를 막기 위해 동시 요청 수를 제한한다.
@@ -207,11 +211,6 @@ function startOfToday(): Date {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
-}
-
-/** 경로 전체를 덮는 데 필요한 오피넷 호출 횟수. 쿼터 계획용. */
-export function estimateOpinetCallCount(route: Route, radiusM: number): number {
-  return Math.ceil(route.distanceM / (Math.min(radiusM, 5000) * 1.4)) + 1;
 }
 
 export { haversineM };

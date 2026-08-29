@@ -1,5 +1,5 @@
 import { cumulativeDistances, pointAtDistance } from "@/lib/domain/geo";
-import type { Brand, FuelKind, Station } from "@/lib/domain/types";
+import type { Brand, FuelKind, Route, Station } from "@/lib/domain/types";
 import { BRAND_LABEL } from "@/lib/domain/types";
 import { SAMPLE_ROUTE_SEEDS, type SampleRouteSeed } from "./sample-routes";
 
@@ -212,4 +212,35 @@ export function getSampleStations(now = new Date()): Station[] {
   );
   cache = { key, stations };
   return stations;
+}
+
+/**
+ * 사용자가 고른 임의 경로 위에 합성 주유소를 깐다.
+ * 오피넷 키가 없을 때 주소 검색으로 만든 경로가 빈 회랑이 되지 않게 한다.
+ */
+export function getStationsForRoute(route: Route, now = new Date()): Station[] {
+  const sampleIds = new Set(SAMPLE_ROUTE_SEEDS.map((seed) => seed.id));
+  if (sampleIds.has(route.id)) return [];
+  return generateForSeed(
+    {
+      id: route.id.replace(/[^a-zA-Z0-9가-힣_-]/g, "").slice(0, 40) || "custom",
+      originName: route.origin.name,
+      destinationName: route.destination.name,
+      summary: route.summary ?? "사용자 경로",
+      highway: Boolean(route.summary?.includes("고속")),
+      avgSpeedKmh: 70,
+      tollKrw: 0,
+      waypoints: route.polyline.map((p, i) => ({
+        ...p,
+        name:
+          i === 0
+            ? route.origin.name
+            : i === route.polyline.length - 1
+              ? route.destination.name
+              : undefined,
+      })),
+    },
+    { spacingM: 3600 },
+    now,
+  );
 }

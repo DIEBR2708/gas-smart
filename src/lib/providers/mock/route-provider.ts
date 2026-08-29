@@ -1,8 +1,5 @@
-import {
-  SAMPLE_ROUTES,
-  SAMPLE_ROUTE_SEEDS,
-  seedToRoute,
-} from "@/lib/data/sample-routes";
+import { SAMPLE_ROUTE_SEEDS, seedToRoute } from "@/lib/data/sample-routes";
+import { interpolateRoute } from "@/lib/domain/route-build";
 import {
   cumulativeDistances,
   curveBetween,
@@ -57,7 +54,8 @@ export class MockRouteProvider implements RouteProvider {
         seed.originName === origin.name && seed.destinationName === destination.name,
     );
     if (match) return seedToRoute(match);
-    return SAMPLE_ROUTES[0];
+    // 모르는 출발·도착을 서울–대전으로 바꾸면 사용자가 고른 좌표가 사라진다.
+    return interpolateRoute(origin, destination);
   }
 
   async computeDetours(

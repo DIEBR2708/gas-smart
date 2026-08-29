@@ -1,6 +1,16 @@
 "use client";
 
-import { Fuel, Gauge, Route as RouteIcon, SlidersHorizontal } from "lucide-react";
+import {
+  Clock,
+  CreditCard,
+  Fuel,
+  Gauge,
+  Route as RouteIcon,
+  SlidersHorizontal,
+} from "lucide-react";
+import { DiscountEditor } from "@/components/discount-editor";
+import { FillRecords } from "@/components/fill-records";
+import { PlaceSearch } from "@/components/place-search";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,13 +25,15 @@ import {
 import type {
   Brand,
   FillPolicy,
+  FillRecord,
   FuelKind,
+  NamedPlace,
   Preferences,
   Route,
   Vehicle,
 } from "@/lib/domain/types";
 import { BRAND_LABEL, FUEL_KIND_LABEL } from "@/lib/domain/types";
-import { krw, liters } from "@/lib/format";
+import { fromSeoulInputValue, krw, liters, toSeoulInputValue } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const FUEL_KINDS: FuelKind[] = ["gasoline", "diesel", "premium", "lpg"];
@@ -54,11 +66,19 @@ const BRANDS: Brand[] = ["SKE", "GSC", "HDO", "SOL", "RTE", "NHO", "ETC"];
 interface Props {
   routes: Route[];
   routeId: string;
+  origin: NamedPlace | null;
+  destination: NamedPlace | null;
+  departAt: Date;
   vehicle: Vehicle;
   preferences: Preferences;
+  fills: FillRecord[];
   onRouteChange: (id: string) => void;
+  onOriginChange: (place: NamedPlace) => void;
+  onDestinationChange: (place: NamedPlace) => void;
+  onDepartAtChange: (date: Date) => void;
   onVehicleChange: (patch: Partial<Vehicle>) => void;
   onPreferencesChange: (patch: Partial<Preferences>) => void;
+  onFillsChange: (records: FillRecord[]) => void;
 }
 
 function SectionTitle({
@@ -164,14 +184,29 @@ function num(value: number | readonly number[]): number {
   return Array.isArray(value) ? value[0] : (value as number);
 }
 
+function seoulTodayAt(hour: number, minute: number): Date {
+  const now = toSeoulInputValue(new Date()).slice(0, 10);
+  return fromSeoulInputValue(
+    `${now}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
+  );
+}
+
 export function SettingsPanel({
   routes,
   routeId,
+  origin,
+  destination,
+  departAt,
   vehicle,
   preferences,
+  fills,
   onRouteChange,
+  onOriginChange,
+  onDestinationChange,
+  onDepartAtChange,
   onVehicleChange,
   onPreferencesChange,
+  onFillsChange,
 }: Props) {
   const tankPercent = Math.round(
     (vehicle.currentFuelL / vehicle.tankCapacityL) * 100,
@@ -181,6 +216,25 @@ export function SettingsPanel({
     <div className="space-y-6">
       <section className="space-y-3">
         <SectionTitle icon={RouteIcon}>경로</SectionTitle>
+        <PlaceSearch
+          key={`origin-${origin?.name ?? ""}-${origin?.lat ?? 0}`}
+          id="origin"
+          label="출발"
+          value={origin}
+          onChange={onOriginChange}
+          allowGeolocation
+        />
+        <PlaceSearch
+          key={`dest-${destination?.name ?? ""}-${destination?.lat ?? 0}`}
+          id="destination"
+          label="도착"
+          value={destination}
+          onChange={onDestinationChange}
+        />
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          아래 샘플 경로를 누르면 출발·도착이 채워집니다. 직접 검색한 좌표는
+          카카오 키가 있으면 실도로로, 없으면 직선 근사로 계산합니다.
+        </p>
         <div className="space-y-1.5">
           {routes.map((route) => {
             const active = route.id === routeId;
@@ -210,6 +264,43 @@ export function SettingsPanel({
               </button>
             );
           })}
+        </div>
+      </section>
+
+      <Separator />
+
+      <section className="space-y-3">
+        <SectionTitle icon={Clock}>출발 시각</SectionTitle>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          평일 출퇴근이면 우회 시간과 도착 시각을 정체 배수로 늘립니다. 카카오
+          키가 있고 출발이 10분 뒤~48시간 안이면 미래운행정보 길찾기를 먼저
+          칩니다.
+        </p>
+        <Input
+          type="datetime-local"
+          value={toSeoulInputValue(departAt)}
+          onChange={(event) => {
+            const next = fromSeoulInputValue(event.target.value);
+            if (!Number.isNaN(next.getTime())) onDepartAtChange(next);
+          }}
+        />
+        <div className="flex flex-wrap gap-1.5">
+          {(
+            [
+              { label: "지금", date: new Date() },
+              { label: "출근 08:00", date: seoulTodayAt(8, 0) },
+              { label: "퇴근 18:00", date: seoulTodayAt(18, 0) },
+            ] as const
+          ).map((chip) => (
+            <button
+              key={chip.label}
+              type="button"
+              onClick={() => onDepartAtChange(chip.date)}
+              className="rounded-md border border-border bg-input/20 px-2 py-1 text-[11px] text-muted-foreground hover:bg-input/40 hover:text-foreground"
+            >
+              {chip.label}
+            </button>
+          ))}
         </div>
       </section>
 
@@ -365,9 +456,9 @@ export function SettingsPanel({
         )}
 
         <Field
-          label="카드·멤버십 할인"
+          label="공통 카드 할인"
           value={`${preferences.cardDiscountKrwPerL}원/L`}
-          hint="주유소 간 가격차는 보통 리터당 수십 원인데, 제휴카드 할인은 그보다 클 수 있습니다. 할인을 빼놓고 비교하면 결론이 뒤집힙니다."
+          hint="모든 주유소에 적용되는 정액 할인입니다. 브랜드별로만 깎는 규칙은 아래 할인 프로필에 넣으세요. 둘을 같은 카드로 중복 입력하면 두 번 깎입니다."
         >
           <Slider
             value={[preferences.cardDiscountKrwPerL]}
@@ -379,6 +470,28 @@ export function SettingsPanel({
             }
           />
         </Field>
+      </section>
+
+      <Separator />
+
+      <section className="space-y-3">
+        <SectionTitle icon={CreditCard}>할인 프로필</SectionTitle>
+        <DiscountEditor
+          rules={preferences.discountRules}
+          onChange={(discountRules) => onPreferencesChange({ discountRules })}
+        />
+      </section>
+
+      <Separator />
+
+      <section className="space-y-3">
+        <SectionTitle icon={Gauge}>연비 학습</SectionTitle>
+        <FillRecords
+          records={fills}
+          currentKmPerLiter={vehicle.kmPerLiter}
+          onChange={onFillsChange}
+          onApply={(kmPerLiter) => onVehicleChange({ kmPerLiter })}
+        />
       </section>
 
       <Separator />

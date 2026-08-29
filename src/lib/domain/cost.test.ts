@@ -47,6 +47,26 @@ describe("effectivePricePerLiter", () => {
     expect(price).toBeCloseTo(1600 * 0.9, 6);
   });
 
+  it("브랜드 조건부 할인 규칙은 해당 브랜드에만 적용된다", () => {
+    const preferences: Preferences = {
+      ...DEFAULT_PREFERENCES,
+      cardDiscountKrwPerL: 0,
+      extraDiscountRate: 0,
+      discountRules: [
+        {
+          id: "sk",
+          name: "SK 제휴",
+          enabled: true,
+          flatKrwPerL: 80,
+          rate: 0,
+          brands: ["SKE"],
+        },
+      ],
+    };
+    expect(effectivePricePerLiter(1700, preferences, "SKE")).toBe(1620);
+    expect(effectivePricePerLiter(1700, preferences, "GSC")).toBe(1700);
+  });
+
   it("할인이 가격을 넘어도 음수가 되지 않는다", () => {
     const price = effectivePricePerLiter(100, {
       ...DEFAULT_PREFERENCES,

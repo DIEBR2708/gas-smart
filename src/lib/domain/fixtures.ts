@@ -28,6 +28,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   selfServiceOnly: false,
   brands: [],
   avoidHighwayExit: false,
+  discountRules: [],
 };
 
 /** 테스트용 단순 직선 경로. 정확히 100km. */

@@ -46,3 +46,26 @@ export function seoulTime(date: Date): string {
     hour12: false,
   }).format(date);
 }
+
+/** datetime-local 입력용 KST 값 (YYYY-MM-DDTHH:mm) */
+export function toSeoulInputValue(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? "00";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+}
+
+/** datetime-local 값을 KST로 해석한다. */
+export function fromSeoulInputValue(value: string): Date {
+  const match = value.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/);
+  if (!match) return new Date(NaN);
+  return new Date(`${match[1]}:00+09:00`);
+}

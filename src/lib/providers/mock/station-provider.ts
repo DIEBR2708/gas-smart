@@ -1,4 +1,5 @@
-import { getSampleStations } from "@/lib/data/sample-stations";
+import { getSampleStations, getStationsForRoute } from "@/lib/data/sample-stations";
+import { planCorridorSearch } from "@/lib/domain/corridor";
 import {
   cumulativeDistances,
   haversineM,
@@ -20,17 +21,16 @@ export class MockStationProvider implements StationProvider {
   readonly isLive = false;
 
   async findAlongRoute(route: Route, query: StationQuery): Promise<Station[]> {
-    const all = getSampleStations();
+    const all = [...getSampleStations(), ...getStationsForRoute(route)];
     const cum = cumulativeDistances(route.polyline);
-    const radiusM = Math.min(query.corridorRadiusM, 5000);
-    // 반경보다 촘촘하게 샘플링해야 원 사이에 빈틈이 생기지 않는다.
-    const samples = sampleAlongRoute(route.polyline, radiusM * 1.4, cum);
+    const plan = planCorridorSearch(route.polyline, query.corridorHalfWidthM);
+    const samples = sampleAlongRoute(route.polyline, plan.intervalM, cum);
 
     const found = new Map<string, Station>();
     for (const sample of samples) {
       for (const station of all) {
         if (found.has(station.id)) continue;
-        if (haversineM(sample.point, station) <= radiusM) {
+        if (haversineM(sample.point, station) <= plan.searchRadiusM) {
           found.set(station.id, station);
         }
       }

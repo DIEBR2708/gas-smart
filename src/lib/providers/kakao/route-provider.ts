@@ -23,6 +23,8 @@ import type { RouteProvider } from "../types";
  */
 
 const DIRECTIONS_URL = "https://apis-navi.kakaomobility.com/v1/directions";
+const FUTURE_DIRECTIONS_URL =
+  "https://apis-navi.kakaomobility.com/v1/future/directions";
 
 const FUEL_PARAM: Record<FuelKind, string> = {
   gasoline: "GASOLINE",
@@ -54,6 +56,11 @@ export interface KakaoRouteOptions {
   priority?: "RECOMMEND" | "TIME" | "DISTANCE";
   /** 하이패스 장착 여부. 통행료 계산에 영향을 준다. */
   hipass?: boolean;
+  /**
+   * 출발 시각. 지금으로부터 10분~48시간 안이면 미래운행정보 길찾기를 먼저 친다.
+   * 실패하면 일반 길찾기로 내려간다.
+   */
+  departAt?: Date;
 }
 
 export class KakaoRouteProvider implements RouteProvider {
@@ -73,6 +80,25 @@ export class KakaoRouteProvider implements RouteProvider {
     };
   }
 
+  private futureDepartureParam(): string | null {
+    const departAt = this.options.departAt;
+    if (!departAt) return null;
+    const minutesAhead = (departAt.getTime() - Date.now()) / 60_000;
+    if (minutesAhead < 10 || minutesAhead > 48 * 60) return null;
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(departAt);
+    const get = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((p) => p.type === type)?.value ?? "00";
+    return `${get("year")}${get("month")}${get("day")}${get("hour")}${get("minute")}`;
+  }
+
   private async request(
     origin: LatLng,
     destination: LatLng,
@@ -82,8 +108,41 @@ export class KakaoRouteProvider implements RouteProvider {
     durationS: number;
     tollKrw: number;
     polyline: LatLng[];
+    includesTraffic: boolean;
   } | null> {
-    const url = new URL(DIRECTIONS_URL);
+    const departure = this.futureDepartureParam();
+    if (departure) {
+      const future = await this.requestOnce(
+        FUTURE_DIRECTIONS_URL,
+        origin,
+        destination,
+        waypoint,
+        departure,
+      );
+      if (future) return { ...future, includesTraffic: true };
+    }
+    const live = await this.requestOnce(
+      DIRECTIONS_URL,
+      origin,
+      destination,
+      waypoint,
+    );
+    return live ? { ...live, includesTraffic: false } : null;
+  }
+
+  private async requestOnce(
+    base: string,
+    origin: LatLng,
+    destination: LatLng,
+    waypoint?: LatLng,
+    departureTime?: string,
+  ): Promise<{
+    distanceM: number;
+    durationS: number;
+    tollKrw: number;
+    polyline: LatLng[];
+  } | null> {
+    const url = new URL(base);
     url.searchParams.set("origin", `${origin.lng},${origin.lat}`);
     url.searchParams.set("destination", `${destination.lng},${destination.lat}`);
     if (waypoint) {
@@ -94,6 +153,9 @@ export class KakaoRouteProvider implements RouteProvider {
     url.searchParams.set("car_hipass", String(this.options.hipass ?? true));
     url.searchParams.set("alternatives", "false");
     url.searchParams.set("road_details", "true");
+    if (departureTime) {
+      url.searchParams.set("departure_time", departureTime);
+    }
 
     const res = await fetch(url, { headers: this.headers() });
     if (!res.ok) return null;
@@ -131,7 +193,10 @@ export class KakaoRouteProvider implements RouteProvider {
       distanceM: result.distanceM,
       durationS: result.durationS,
       tollKrw: result.tollKrw,
-      summary: "카카오 추천 경로",
+      summary: result.includesTraffic
+        ? "카카오 추천 경로 (출발 시각 정체 반영)"
+        : "카카오 추천 경로",
+      durationIncludesTraffic: result.includesTraffic,
     };
   }
 

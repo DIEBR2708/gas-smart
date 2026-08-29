@@ -19,7 +19,10 @@ export interface ProviderSet {
   anyLive: boolean;
 }
 
-export function resolveProviders(fuelKind: FuelKind): ProviderSet {
+export function resolveProviders(
+  fuelKind: FuelKind,
+  departAt?: Date,
+): ProviderSet {
   const opinetKey = process.env.OPINET_CERT_KEY?.trim();
   const kakaoKey = process.env.KAKAO_REST_API_KEY?.trim();
 
@@ -28,7 +31,7 @@ export function resolveProviders(fuelKind: FuelKind): ProviderSet {
     : new MockStationProvider();
 
   const routes: RouteProvider = kakaoKey
-    ? new KakaoRouteProvider(kakaoKey, { fuelKind })
+    ? new KakaoRouteProvider(kakaoKey, { fuelKind, departAt })
     : new MockRouteProvider();
 
   return { stations, routes, anyLive: stations.isLive || routes.isLive };

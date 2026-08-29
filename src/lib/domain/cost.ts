@@ -1,10 +1,12 @@
 import type {
+  Brand,
   Detour,
   FillPolicy,
   Preferences,
   RefuelOption,
   Route,
   Station,
+  StationReport,
   Vehicle,
   Warning,
 } from "./types";
@@ -28,16 +30,34 @@ export interface CostContext {
   referencePriceKrwPerL: number;
   /** 출발 시각. 주유소 도착 시점의 영업 여부 판정에 쓴다. */
   departAt: Date;
+  /**
+   * 정체로 늘어난 시간 배수. 1이면 자유 흐름, 출퇴근은 1보다 크다.
+   * 우회 시간 비용과 도착 시각 추정에만 곱한다. 거리는 바꾸지 않는다.
+   */
+  congestionFactor?: number;
+  reports?: StationReport[];
+  /** 다회 주유 일정에서 주입량을 강제할 때 쓴다. */
+  forcedLiters?: number;
 }
 
 /** 카드 정액 할인 후 정률 할인을 적용한 실지불 단가. */
 export function effectivePricePerLiter(
   listPriceKrwPerL: number,
   preferences: Preferences,
+  brand?: Brand,
 ): number {
-  const afterFlat = listPriceKrwPerL - preferences.cardDiscountKrwPerL;
-  const rate = Math.min(Math.max(preferences.extraDiscountRate, 0), 1);
-  return Math.max(0, afterFlat * (1 - rate));
+  let flat = preferences.cardDiscountKrwPerL;
+  let rate = Math.min(Math.max(preferences.extraDiscountRate, 0), 1);
+  for (const rule of preferences.discountRules ?? []) {
+    if (!rule.enabled) continue;
+    if (rule.brands.length > 0 && (!brand || !rule.brands.includes(brand))) {
+      continue;
+    }
+    flat += rule.flatKrwPerL;
+    rate = 1 - (1 - rate) * (1 - Math.min(Math.max(rule.rate, 0), 1));
+  }
+  const afterFlat = listPriceKrwPerL - flat;
+  return Math.max(0, afterFlat * (1 - Math.min(rate, 1)));
 }
 
 /** 우회 없이 그대로 달렸을 때 목적지에서 예비량을 남기기 위해 필요한 주유량 (L). */
@@ -138,7 +158,11 @@ export function evaluateOption(
   const listPrice = station.prices[vehicle.fuelKind];
   if (listPrice === undefined) return null;
 
-  const effectivePrice = effectivePricePerLiter(listPrice, preferences);
+  const mismatch = (ctx.reports ?? []).find(
+    (r) => r.stationId === station.id && r.kind === "price-mismatch",
+  );
+  const listed = listPrice + (mismatch ? 40 : 0);
+  const effectivePrice = effectivePricePerLiter(listed, preferences, station.brand);
   const e = vehicle.kmPerLiter;
 
   const baseKm = route.distanceM / 1000;
@@ -155,12 +179,15 @@ export function evaluateOption(
     0,
     vehicle.tankCapacityL - Math.max(0, fuelOnArrivalL),
   );
-  const desiredL = desiredLitersForPolicy(preferences.fillPolicy, {
-    totalTripKm,
-    vehicle,
-    maxFillableL,
-    effectivePriceKrwPerL: effectivePrice,
-  });
+  const desiredL =
+    ctx.forcedLiters !== undefined
+      ? ctx.forcedLiters
+      : desiredLitersForPolicy(preferences.fillPolicy, {
+          totalTripKm,
+          vehicle,
+          maxFillableL,
+          effectivePriceKrwPerL: effectivePrice,
+        });
   const litersToBuy = Math.min(desiredL, maxFillableL);
   const tankCapped = desiredL > maxFillableL + 1e-6;
 
@@ -171,8 +198,10 @@ export function evaluateOption(
 
   const outOfPocketKrw = effectivePrice * litersToBuy;
   const detourFuelCostKrw = effectivePrice * detourFuelL;
+  const congestion = Math.max(1, ctx.congestionFactor ?? 1);
+  const inflatedDurationS = detour.extraDurationS * congestion;
   const timeCostKrw =
-    (detour.extraDurationS / 60) * preferences.timeValueKrwPerMin;
+    (inflatedDurationS / 60) * preferences.timeValueKrwPerMin;
   const tollDeltaKrw = detour.extraTollKrw;
   const surplusCreditKrw = referencePriceKrwPerL * surplusFuelL;
   const shortfallCostKrw = referencePriceKrwPerL * shortfallFuelL;
@@ -234,9 +263,13 @@ export function evaluateOption(
     departAt.getTime() +
       ((route.durationS * (detour.alongRouteM / Math.max(1, route.distanceM)) +
         detour.extraDurationS) *
+        congestion *
         1000),
   );
-  if (!isOpenAt(station, arrivalAt)) {
+  const reportedClosed = (ctx.reports ?? []).some(
+    (r) => r.stationId === station.id && (r.kind === "closed" || r.kind === "gone"),
+  );
+  if (reportedClosed || !isOpenAt(station, arrivalAt)) {
     const minutes = minutesOfDayInSeoul(arrivalAt);
     const hhmm = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
     warnings.push({
@@ -265,6 +298,26 @@ export function evaluateOption(
       code: "estimated-detour",
       severity: "info",
       message: "우회 거리는 도로망이 아닌 기하학적 추정치입니다.",
+    });
+  }
+  if (congestion > 1.05) {
+    warnings.push({
+      code: "congested",
+      severity: "info",
+      message: `출발 시각 기준 정체를 반영해 우회 시간을 ${Math.round((congestion - 1) * 100)}% 늘려 계산했습니다.`,
+    });
+  }
+  for (const report of ctx.reports ?? []) {
+    if (report.stationId !== station.id) continue;
+    warnings.push({
+      code: "user-reported",
+      severity: report.kind === "price-mismatch" ? "warn" : "error",
+      message:
+        report.kind === "price-mismatch"
+          ? "이전에 현장 가격이 다르다고 제보한 곳입니다. 단가를 40원/L 비관적으로 올렸습니다."
+          : report.kind === "closed"
+            ? "영업하지 않는다고 제보한 곳입니다."
+            : "폐업·이전으로 제보한 곳입니다.",
     });
   }
 

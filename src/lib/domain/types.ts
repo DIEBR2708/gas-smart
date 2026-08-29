@@ -100,6 +100,44 @@ export interface Preferences {
   brands: Brand[];
   /** 고속도로 본선을 벗어나야 하는 주유소를 후보에서 제외 */
   avoidHighwayExit: boolean;
+  /**
+   * 카드·멤버십 할인 규칙. 브랜드가 비어 있으면 모든 주유소에 적용하고,
+   * 지정되어 있으면 그 브랜드에서만 깎는다. 여러 규칙이 겹치면 정액은 더하고
+   * 정률은 합성한다.
+   */
+  discountRules: DiscountRule[];
+}
+
+export interface DiscountRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  /** 리터당 정액 할인 (원/L) */
+  flatKrwPerL: number;
+  /** 정률 할인 (0~1) */
+  rate: number;
+  /** 빈 배열이면 모든 브랜드 */
+  brands: Brand[];
+}
+
+export type ReportKind = "closed" | "price-mismatch" | "gone";
+
+/** 사용자가 제보한 현장 정보. 기기 안에만 두고 서버에 계정으로 묶지 않는다. */
+export interface StationReport {
+  id: string;
+  stationId: string;
+  stationName: string;
+  kind: ReportKind;
+  note: string;
+  reportedAt: string;
+}
+
+/** 연비 학습에 쓰는 주유 기록. 주행거리와 주입량만 있으면 된다. */
+export interface FillRecord {
+  id: string;
+  at: string;
+  kmDriven: number;
+  liters: number;
 }
 
 export interface OpeningHours {
@@ -151,6 +189,12 @@ export interface Route {
   tollKrw: number;
   /** 경로 요약 라벨 (예: "경부고속도로") */
   summary?: string;
+  /**
+   * 소요시간에 시간대별 정체가 이미 들어 있는가.
+   * 카카오 미래운행정보 길찾기를 썼을 때 true. 휴리스틱 정체 배수를 또 곱하면
+   * 이중 계상이 된다.
+   */
+  durationIncludesTraffic?: boolean;
 }
 
 export type DetourSource = "routing-api" | "geometric-estimate";
@@ -178,7 +222,9 @@ export type WarningCode =
   | "closed-on-arrival"
   | "opposite-side"
   | "highway-exit"
-  | "estimated-detour";
+  | "estimated-detour"
+  | "user-reported"
+  | "congested";
 
 export interface Warning {
   code: WarningCode;
@@ -277,7 +323,9 @@ export type Verdict =
   /** 후보가 없다 */
   | "no-candidates"
   /** 이번 구간은 주유가 아예 필요 없다 */
-  | "no-refuel-needed";
+  | "no-refuel-needed"
+  /** 탱크 하나로 목적지까지 못 가 두 번 이상 넣어야 한다 */
+  | "multi-stop";
 
 export interface RefuelPlan {
   route: Route;
@@ -298,11 +346,58 @@ export interface RefuelPlan {
   verdict: Verdict;
   /** 사용자에게 보여줄 한 줄 결론 */
   headline: string;
-  meta: {
-    stationProvider: string;
-    routeProvider: string;
-    candidateCount: number;
-    detourSource: DetourSource;
-    computedAt: string;
-  };
+  /**
+   * 탱크 제약 때문에 두 번 이상 넣어야 할 때의 방문 순서.
+   * 한 번으로 충분하면 최적안 하나만 들어 있다. 비어 있으면 주유 불가다.
+   */
+  itinerary: ItineraryStop[];
+  meta: PlanMeta;
+}
+
+export interface ItineraryStop {
+  option: RankedOption;
+  /** 이 정류에서 실제로 넣는 양. 중간 정류는 '다음까지 갈 만큼'일 수 있다. */
+  litersToBuy: number;
+  /** full = 가득, enough = 다음 싼 곳까지, last = 사용자 정책 */
+  fillReason: "enough-for-next" | "fill-full" | "last-stop" | "only-stop";
+  outOfPocketKrw: number;
+  fuelOnArrivalL: number;
+  fuelOnDepartL: number;
+}
+
+/**
+ * 이 계획이 무엇을 봤고 무엇을 보지 않았는지.
+ *
+ * "빠진 주유소는 없나"라는 질문에 답할 수 있어야 한다. 조회 범위와 계산
+ * 범위를 숨기면 사용자는 결과를 전수 비교로 오해한다.
+ */
+export interface PlanMeta {
+  stationProvider: string;
+  routeProvider: string;
+  detourSource: DetourSource;
+  computedAt: string;
+
+  /** 회랑 안에서 조회된 주유소 수 */
+  candidateCount: number;
+  /** 실제 우회 경로까지 정밀 계산한 주유소 수 */
+  exactlyEvaluated: number;
+
+  /** 빈틈 없이 덮은 회랑 반폭 (m) */
+  corridorHalfWidthM: number;
+  /** 사용자의 우회 허용치가 요구하는 회랑 반폭 (m) */
+  requestedHalfWidthM: number;
+  /** 반경 상한 때문에 회랑이 잘렸는가 */
+  corridorTruncated: boolean;
+  /** 각 반경 검색에 사용한 반경 (m) */
+  searchRadiusM: number;
+  /** 경로를 덮는 데 필요한 반경 검색 호출 횟수 */
+  searchCallCount: number;
+
+  /**
+   * 정밀 계산에서 제외한 후보가 최적안을 이길 수 없음을 증명했는가.
+   *
+   * false면 쿼터 상한에 걸려 계산을 멈춘 것이고, 보지 않은 후보 중에 더
+   * 나은 것이 있을 수 있다. 이 경우 화면에 반드시 알려야 한다.
+   */
+  optimalityGuaranteed: boolean;
 }

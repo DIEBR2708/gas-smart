@@ -39,6 +39,7 @@ interface Props {
   shapes: Record<string, LatLng[]>;
   selectedId: string | null;
   bestId: string | null;
+  itineraryIds?: string[];
   onSelect: (stationId: string) => void;
 }
 
@@ -105,6 +106,7 @@ export default function RouteMap({
   shapes,
   selectedId,
   bestId,
+  itineraryIds = [],
   onSelect,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -223,7 +225,8 @@ export default function RouteMap({
       const selected = stationId === selectedId;
       const isBest = stationId === bestId;
 
-      if (selected || isBest) {
+      const onItinerary = itineraryIds.includes(stationId);
+      if (selected || isBest || onItinerary) {
         const shape = shapes[stationId];
         if (shape?.length) {
           L.polyline(
@@ -269,7 +272,7 @@ export default function RouteMap({
       marker.remove();
       markersRef.current.delete(stationId);
     }
-  }, [polyline, route, options, shapes, selectedId, bestId]);
+  }, [polyline, route, options, shapes, selectedId, bestId, itineraryIds]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }
