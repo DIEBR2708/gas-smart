@@ -208,23 +208,32 @@ export default function RouteMap({
     map.invalidateSize();
 
     routeLayer.clearLayers();
-    L.polyline(polyline, {
-      color: "#1e3a8a",
-      weight: 11,
-      opacity: 0.45,
-      lineJoin: "round",
-    }).addTo(routeLayer);
-    L.polyline(polyline, {
-      color: "#60a5fa",
-      weight: 4,
-      opacity: 0.95,
-      lineJoin: "round",
-    }).addTo(routeLayer);
+    const driveable = route.driveable !== false && polyline.length >= 2;
+    if (driveable) {
+      L.polyline(polyline, {
+        color: "#1e3a8a",
+        weight: 11,
+        opacity: 0.45,
+        lineJoin: "round",
+      }).addTo(routeLayer);
+      L.polyline(polyline, {
+        color: "#60a5fa",
+        weight: 4,
+        opacity: 0.95,
+        lineJoin: "round",
+      }).addTo(routeLayer);
+    }
     endpointMarker(route.origin, "#38bdf8").addTo(routeLayer);
     endpointMarker(route.destination, "#f472b6").addTo(routeLayer);
 
     if (fittedRouteRef.current !== route.id) {
-      map.fitBounds(L.latLngBounds(polyline).pad(0.08));
+      const bounds = driveable
+        ? L.latLngBounds(polyline)
+        : L.latLngBounds([
+            [route.origin.lat, route.origin.lng],
+            [route.destination.lat, route.destination.lng],
+          ]);
+      map.fitBounds(bounds.pad(0.12));
       fittedRouteRef.current = route.id;
     }
 

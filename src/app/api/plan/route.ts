@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSampleRoute, SAMPLE_ROUTES } from "@/lib/data/sample-routes";
+import {
+  carUnreachableReason,
+  polylineUnreachableReason,
+  UNREACHABLE_BY_CAR_CODE,
+} from "@/lib/domain/driving-region";
 import { interpolateRoute } from "@/lib/domain/route-build";
 import { buildRefuelPlan } from "@/lib/domain/plan";
 import type {
@@ -176,10 +181,35 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+    const blocked = carUnreachableReason(origin, destination);
+    if (blocked) {
+      return NextResponse.json(
+        { error: blocked, code: UNREACHABLE_BY_CAR_CODE },
+        { status: 400 },
+      );
+    }
     try {
       route = await providers.routes.findRoute(origin, destination);
     } catch {
-      route = interpolateRoute(origin, destination);
+      try {
+        route = interpolateRoute(origin, destination);
+      } catch (fallback) {
+        const reason =
+          fallback instanceof Error
+            ? fallback.message
+            : "자동차로는 갈 수 없는 구간입니다.";
+        return NextResponse.json(
+          { error: reason, code: UNREACHABLE_BY_CAR_CODE },
+          { status: 400 },
+        );
+      }
+    }
+    const sea = polylineUnreachableReason(route.polyline);
+    if (sea) {
+      return NextResponse.json(
+        { error: sea, code: UNREACHABLE_BY_CAR_CODE },
+        { status: 400 },
+      );
     }
   }
 

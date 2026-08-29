@@ -26,7 +26,12 @@ import {
   saveSession,
   newId,
 } from "@/lib/client-store";
+import {
+  carUnreachableReason,
+  isUnreachableByCarMessage,
+} from "@/lib/domain/driving-region";
 import { DEFAULT_PREFERENCES, DEFAULT_VEHICLE } from "@/lib/domain/fixtures";
+import { disconnectedEndpointsRoute } from "@/lib/domain/route-build";
 import type {
   NamedPlace,
   Preferences,
@@ -115,6 +120,18 @@ export function Planner({ routes }: Props) {
     const seq = ++requestSeq.current;
 
     const timer = setTimeout(() => {
+      const blocked =
+        origin && destination ? carUnreachableReason(origin, destination) : null;
+      if (blocked) {
+        setData(null);
+        setError(blocked);
+        setFromCache(false);
+        setCachedAt(null);
+        setSelectedId(null);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       fetchPlan(
         {
@@ -151,6 +168,14 @@ export function Planner({ routes }: Props) {
           const message =
             cause instanceof Error ? cause.message : "알 수 없는 오류";
           const cached = loadCachedPlan();
+          if (isUnreachableByCarMessage(message)) {
+            setData(null);
+            setFromCache(false);
+            setCachedAt(null);
+            setError(message);
+            setSelectedId(null);
+            return;
+          }
           if (cached) {
             setData(cached.response);
             setFromCache(true);
@@ -176,9 +201,14 @@ export function Planner({ routes }: Props) {
     };
   }, [routeId, origin, destination, vehicle, preferences, departAt, reports]);
 
-  const displayRoute = data?.plan.route ??
-    routes.find((r) => r.id === routeId) ??
-    routes[0];
+  const unreachable =
+    Boolean(error && isUnreachableByCarMessage(error)) &&
+    Boolean(origin && destination);
+  const displayRoute = unreachable && origin && destination
+    ? disconnectedEndpointsRoute(origin, destination)
+    : data?.plan.route ??
+      routes.find((r) => r.id === routeId) ??
+      routes[0];
 
   const handleSelect = useCallback((id: string) => {
     if (mapPick) return;

@@ -16,6 +16,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CostBreakdown } from "@/components/cost-breakdown";
 import { FuelTimeline } from "@/components/fuel-timeline";
+import { isUnreachableByCarMessage } from "@/lib/domain/driving-region";
 import type { ReportKind, RefuelPlan, StationReport, Verdict } from "@/lib/domain/types";
 import { BRAND_LABEL } from "@/lib/domain/types";
 import { km, krw, liters, perLiter, signedKrw } from "@/lib/format";
@@ -148,13 +149,20 @@ export function ResultPanel({
   onReport,
 }: Props) {
   if (error && !plan) {
+    const unreachable = isUnreachableByCarMessage(error);
     return (
       <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4">
         <div className="flex items-center gap-2 font-medium text-red-300">
           <TriangleAlert className="size-4" />
-          계산에 실패했습니다
+          {unreachable ? "자동차로 갈 수 없는 구간" : "계산에 실패했습니다"}
         </div>
         <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+        {unreachable && (
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            제주·울릉처럼 배로만 이어진 곳은 직선으로 잇지 않습니다. 육지 안의
+            출발·도착을 골라 주세요.
+          </p>
+        )}
       </div>
     );
   }

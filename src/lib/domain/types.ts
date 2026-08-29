@@ -195,6 +195,11 @@ export interface Route {
    * 이중 계상이 된다.
    */
   durationIncludesTraffic?: boolean;
+  /**
+   * 자동차로 갈 수 있는 경로인가.
+   * false면 출발·도착 표시만 하고 선을 잇지 않는다.
+   */
+  driveable?: boolean;
 }
 
 export type DetourSource = "routing-api" | "geometric-estimate";
