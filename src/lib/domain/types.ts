@@ -1,0 +1,300 @@
+/**
+ * 도메인 타입 정의.
+ *
+ * 이 프로젝트의 계산은 전부 "여행을 끝내는 데 드는 실질 총비용"을 기준으로 한다.
+ * 리터당 표시가격은 비교 기준이 될 수 없다. 우회 연료, 시간, 통행료, 그리고
+ * 도착 시 탱크에 남는 연료의 자산 가치까지 같은 단위(원)로 환산해야
+ * 서로 다른 주유소를 공정하게 비교할 수 있다.
+ */
+
+export type FuelKind = "gasoline" | "premium" | "diesel" | "lpg";
+
+export const FUEL_KIND_LABEL: Record<FuelKind, string> = {
+  gasoline: "휘발유",
+  premium: "고급휘발유",
+  diesel: "경유",
+  lpg: "자동차부탄(LPG)",
+};
+
+/** 오피넷 prodcd 코드 매핑 */
+export const OPINET_PROD_CODE: Record<FuelKind, string> = {
+  gasoline: "B027",
+  premium: "B034",
+  diesel: "D047",
+  lpg: "K015",
+};
+
+export type Brand =
+  | "SKE"
+  | "GSC"
+  | "HDO"
+  | "SOL"
+  | "RTE"
+  | "RTX"
+  | "NHO"
+  | "ETC";
+
+export const BRAND_LABEL: Record<Brand, string> = {
+  SKE: "SK에너지",
+  GSC: "GS칼텍스",
+  HDO: "현대오일뱅크",
+  SOL: "S-OIL",
+  RTE: "자영알뜰",
+  RTX: "고속도로알뜰",
+  NHO: "농협알뜰",
+  ETC: "자가상표",
+};
+
+export interface LatLng {
+  lat: number;
+  lng: number;
+}
+
+export interface NamedPlace extends LatLng {
+  name: string;
+}
+
+export interface Vehicle {
+  fuelKind: FuelKind;
+  /** 실주행 연비 (km/L). 공인연비가 아니라 사용자의 실측값을 기대한다. */
+  kmPerLiter: number;
+  /** 연료탱크 용량 (L) */
+  tankCapacityL: number;
+  /** 현재 연료량 (L) */
+  currentFuelL: number;
+  /**
+   * 목적지 도착 시 탱크에 남겨둘 최소 연료 (L).
+   * 연비 추정 오차와 정체/우회를 흡수하는 안전 마진이다. 0으로 두면 안 된다.
+   */
+  reserveL: number;
+}
+
+export type FillPolicy =
+  | { mode: "toDestination" }
+  | { mode: "full" }
+  | { mode: "fixedLiters"; liters: number }
+  | { mode: "fixedBudget"; krw: number };
+
+export interface Preferences {
+  /**
+   * 시간의 가치 (원/분). 우회로 늘어난 시간을 돈으로 환산하는 계수.
+   * 0이면 "시간은 공짜"라는 뜻이고, 이 값이 커질수록 우회 추천이 줄어든다.
+   */
+  timeValueKrwPerMin: number;
+  /** 제휴카드·멤버십의 리터당 정액 할인 (원/L) */
+  cardDiscountKrwPerL: number;
+  /** 결제수단 정률 할인 (0~1). 정액 할인 적용 후에 곱한다. */
+  extraDiscountRate: number;
+  /** 허용 최대 우회 거리 (km) */
+  maxDetourKm: number;
+  /** 허용 최대 우회 시간 (분) */
+  maxDetourMin: number;
+  fillPolicy: FillPolicy;
+  /**
+   * 추천으로 인정할 최소 순절감액 (원).
+   * 모델 오차보다 작은 이득을 "절약"이라고 부르면 사용자를 속이는 것이다.
+   */
+  minMeaningfulSavingKrw: number;
+  selfServiceOnly: boolean;
+  /** 빈 배열이면 브랜드 제한 없음 */
+  brands: Brand[];
+  /** 고속도로 본선을 벗어나야 하는 주유소를 후보에서 제외 */
+  avoidHighwayExit: boolean;
+}
+
+export interface OpeningHours {
+  /** 24시간 영업 */
+  allDay: boolean;
+  /** "06:00" 형식. allDay가 true면 무시된다. */
+  open?: string;
+  close?: string;
+}
+
+/**
+ * 목(mock) 경로 프로바이더가 우회 비용을 기하학적으로 추정할 때 쓰는 힌트.
+ * 실제 경로 API를 쓰면 이 값은 필요 없다. 진짜 도로망이 답을 주기 때문이다.
+ */
+export interface AccessHint {
+  /** 진행 방향 기준 반대편 차선에 있어 유턴이나 회차가 필요 */
+  oppositeSide: boolean;
+  /** 고속도로 본선에서 진출해야 도달 가능 */
+  requiresHighwayExit: boolean;
+  /** 고속도로 본선상의 휴게소·졸음쉼터형 주유소 */
+  onHighway: boolean;
+}
+
+export interface Station {
+  id: string;
+  name: string;
+  brand: Brand;
+  isSelfService: boolean;
+  lat: number;
+  lng: number;
+  /** 유종별 표시가 (원/L). 미취급 유종은 키가 없다. */
+  prices: Partial<Record<FuelKind, number>>;
+  /** 가격 신고 시각 (ISO 8601). 신선도 경고의 근거. */
+  priceUpdatedAt: string;
+  openingHours: OpeningHours;
+  address?: string;
+  hasCarWash?: boolean;
+  accessHint?: AccessHint;
+}
+
+export interface Route {
+  id: string;
+  origin: NamedPlace;
+  destination: NamedPlace;
+  /** 경로 형상. 인접한 점 사이는 직선으로 간주한다. */
+  polyline: LatLng[];
+  distanceM: number;
+  durationS: number;
+  tollKrw: number;
+  /** 경로 요약 라벨 (예: "경부고속도로") */
+  summary?: string;
+}
+
+export type DetourSource = "routing-api" | "geometric-estimate";
+
+/** 기본 경로 대비 특정 주유소를 경유했을 때의 증분. */
+export interface Detour {
+  extraDistanceM: number;
+  extraDurationS: number;
+  extraTollKrw: number;
+  /** 출발지에서 주유소 진입 지점까지의 본선 주행거리 (m) */
+  alongRouteM: number;
+  /** 주유소에서 본선까지의 직선 이탈 거리 (m). 표시·정렬용. */
+  offRouteM: number;
+  /** 본선 진입 지점 좌표. 지도에 우회 구간을 그릴 때 쓴다. */
+  joinPoint: LatLng;
+  source: DetourSource;
+}
+
+export type WarningCode =
+  | "unreachable"
+  | "low-margin-on-arrival"
+  | "tank-capped"
+  | "insufficient-to-destination"
+  | "stale-price"
+  | "closed-on-arrival"
+  | "opposite-side"
+  | "highway-exit"
+  | "estimated-detour";
+
+export interface Warning {
+  code: WarningCode;
+  message: string;
+  severity: "info" | "warn" | "error";
+}
+
+/** 한 주유소에 대한 완전한 비용 평가 결과. */
+export interface RefuelOption {
+  station: Station;
+  detour: Detour;
+
+  /** 오피넷 표시가 (원/L) */
+  listPriceKrwPerL: number;
+  /** 할인 적용 후 실제 지불 단가 (원/L) */
+  effectivePriceKrwPerL: number;
+
+  /** 주유소 펌프 앞에 도착한 시점의 잔여 연료 (L) */
+  fuelOnArrivalL: number;
+  /** 현재 연료로 이 주유소까지 갈 수 있는가 */
+  reachable: boolean;
+
+  /** 실제로 주입하는 양 (L) */
+  litersToBuy: number;
+  /** 탱크 용량 때문에 원하는 양보다 적게 넣었는가 */
+  tankCapped: boolean;
+  /** 우회 때문에 추가로 태우는 연료 (L) */
+  detourFuelL: number;
+  /** 목적지 도착 시 잔여 연료 (L) */
+  fuelAtDestinationL: number;
+  /** 안전 예비량을 초과해 남는 연료 (L) — 자산으로 환산해 상계한다 */
+  surplusFuelL: number;
+  /**
+   * 예비량을 채우지 못해 부족한 연료 (L).
+   * 예산·탱크 제약으로 조금만 넣은 경우 발생한다. 어차피 나중에 사야 하므로
+   * 경로 주변 시세로 값을 매겨 비용에 더해야 비교가 공정해진다.
+   */
+  shortfallFuelL: number;
+
+  /** 실제 카드 결제액 (원) */
+  outOfPocketKrw: number;
+  /** 그중 우회 주행에 태워 없어지는 몫 (원). 정보성 표시용. */
+  detourFuelCostKrw: number;
+  /** 우회 시간의 기회비용 (원) */
+  timeCostKrw: number;
+  /** 기본 경로 대비 통행료 증분 (원) */
+  tollDeltaKrw: number;
+  /** 남는 연료를 경로 주변 시세로 환산한 크레딧 (원) */
+  surplusCreditKrw: number;
+  /** 부족분을 나중에 시세로 사야 하는 비용 (원) */
+  shortfallCostKrw: number;
+
+  /**
+   * 정규화 총비용 (원).
+   * outOfPocket + 시간 + 통행료 + 부족분 - 남는연료가치.
+   * 모든 후보를 "도착 시 예비량만 남긴 상태"로 맞춘 뒤 비교하기 위한 값이다.
+   */
+  normalizedCostKrw: number;
+  /** 이번 여행에서 실제로 소비되는 1L당 실질 단가 (원/L) */
+  krwPerUsefulLiter: number;
+
+  warnings: Warning[];
+}
+
+export interface RankedOption extends RefuelOption {
+  /** 기준선 대비 절감액 (원). 음수면 손해. */
+  savingKrw: number;
+  /**
+   * 비관 시나리오(연비 -15%, 대상 가격 +25원/L, 우회거리 +25%)에서의 절감액.
+   * 이 값이 0 이하면 절감이 모델 오차에 묻힌다는 뜻이다.
+   */
+  savingPessimisticKrw: number;
+  /**
+   * 이 주유소가 기준선을 계속 이기려면 우회가 최대 몇 km까지 가능한지.
+   * 사용자에게 "왜 이 정도 가격차는 우회할 가치가 없는지"를 설명하는 숫자.
+   */
+  breakEvenDetourKm: number;
+  rank: number;
+}
+
+export type Verdict =
+  /** 우회해서 특정 주유소로 가는 편이 분명히 이득 */
+  | "detour-worth-it"
+  /** 이득이 있긴 하지만 모델 오차 범위에 묻힌다 */
+  | "marginal"
+  /** 우회할 이유가 없다. 가장 가까운 곳에서 넣는 게 낫다. */
+  | "stay-on-route"
+  /** 후보가 없다 */
+  | "no-candidates"
+  /** 이번 구간은 주유가 아예 필요 없다 */
+  | "no-refuel-needed";
+
+export interface RefuelPlan {
+  route: Route;
+  vehicle: Vehicle;
+  preferences: Preferences;
+  /** 우회 없이 그대로 갔을 때 필요한 최소 주유량 (L) */
+  litersRequiredWithoutDetour: number;
+  /** 무주유로 목적지까지 도달 가능한가 (예비량 포함) */
+  canReachWithoutRefueling: boolean;
+  /** 경로 주변 시세 중위값 (원/L). 남는 연료 환산과 기준선 계산에 쓴다. */
+  referencePriceKrwPerL: number;
+  /** "그냥 지나가다 가장 가까운 곳에서 넣기" 시나리오 */
+  baseline: RankedOption | null;
+  best: RankedOption | null;
+  options: RankedOption[];
+  /** 도달 불가·시간초과 등으로 제외된 후보와 이유 */
+  excluded: { station: Station; reason: string }[];
+  verdict: Verdict;
+  /** 사용자에게 보여줄 한 줄 결론 */
+  headline: string;
+  meta: {
+    stationProvider: string;
+    routeProvider: string;
+    candidateCount: number;
+    detourSource: DetourSource;
+    computedAt: string;
+  };
+}
