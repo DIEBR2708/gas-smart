@@ -156,6 +156,14 @@
     color: oklch(0.78 0.03 258) !important;
   }
 
+  .leaflet-container.pick-mode {
+    cursor: crosshair !important;
+  }
+
+  .leaflet-container.pick-mode .leaflet-interactive {
+    cursor: crosshair !important;
+  }
+
   .leaflet-control-zoom a {
     background: oklch(0.235 0.028 262) !important;
     color: oklch(0.94 0.006 250) !important;

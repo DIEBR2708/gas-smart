@@ -1,3 +1,4 @@
+import { searchGazetteer } from "./data/places";
 import type {
   LatLng,
   NamedPlace,
@@ -43,19 +44,25 @@ export async function fetchPlan(
 
 export interface PlaceSearchResponse {
   places: NamedPlace[];
-  source: "kakao" | "gazetteer" | "mixed" | "device";
+  source: "kakao" | "gazetteer" | "mixed" | "device" | "nominatim";
 }
 
 export async function searchPlaces(
   query: string,
   signal?: AbortSignal,
 ): Promise<NamedPlace[]> {
-  const res = await fetch(`/api/places?q=${encodeURIComponent(query)}`, {
-    signal,
-  });
-  if (!res.ok) return [];
-  const json = (await res.json()) as PlaceSearchResponse;
-  return json.places ?? [];
+  try {
+    const res = await fetch(`/api/places?q=${encodeURIComponent(query)}`, {
+      signal,
+    });
+    if (!res.ok) return searchGazetteer(query);
+    const json = (await res.json()) as PlaceSearchResponse;
+    const places = json.places ?? [];
+    return places.length > 0 ? places : searchGazetteer(query);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return searchGazetteer(query);
+  }
 }
 
 export async function reverseGeocodePlace(

@@ -4,12 +4,29 @@ import {
   reverseGeocodeKakao,
   searchKakaoPlaces,
 } from "@/lib/providers/kakao/local";
+import { reverseNominatim, searchNominatim } from "@/lib/providers/nominatim";
 import type { NamedPlace } from "@/lib/domain/types";
 
 /**
- * 주소·지명 검색. 카카오 로컬 키가 있으면 그 결과를 앞에 두고,
- * 없어도 지명 사전으로 동작한다.
+ * 주소·지명 검색.
+ * 카카오 로컬이 열려 있으면 그걸 쓰고, 꺼져 있으면 Nominatim으로 주소를 찾는다.
+ * 지명 사전은 항상 뒤에 붙인다.
  */
+
+function mergePlaces(lists: NamedPlace[][], limit = 8): NamedPlace[] {
+  const seen = new Set<string>();
+  const out: NamedPlace[] = [];
+  for (const list of lists) {
+    for (const place of list) {
+      const id = `${place.name}:${place.lat.toFixed(4)}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(place);
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -22,10 +39,22 @@ export async function GET(request: Request) {
 
   if (latRaw && lngRaw && Number.isFinite(lat) && Number.isFinite(lng)) {
     let place: NamedPlace = { name: "현재 위치", lat, lng };
+    let source: "kakao" | "nominatim" | "device" = "device";
     if (kakaoKey) {
-      place = (await reverseGeocodeKakao(kakaoKey, lat, lng)) ?? place;
+      const kakao = await reverseGeocodeKakao(kakaoKey, lat, lng);
+      if (kakao && kakao.name !== "현재 위치") {
+        place = kakao;
+        source = "kakao";
+      }
     }
-    return NextResponse.json({ places: [place], source: kakaoKey ? "kakao" : "device" });
+    if (source === "device") {
+      const osm = await reverseNominatim(lat, lng);
+      if (osm) {
+        place = osm;
+        source = "nominatim";
+      }
+    }
+    return NextResponse.json({ places: [place], source });
   }
 
   if (query.length < 1) {
@@ -33,22 +62,17 @@ export async function GET(request: Request) {
   }
 
   const gazetteer = searchGazetteer(query, 8);
-  if (!kakaoKey) {
-    return NextResponse.json({ places: gazetteer, source: "gazetteer" });
+  let kakao: NamedPlace[] = [];
+  if (kakaoKey) {
+    try {
+      kakao = await searchKakaoPlaces(kakaoKey, query, 8);
+    } catch {
+      kakao = [];
+    }
   }
-
-  try {
-    const live = await searchKakaoPlaces(kakaoKey, query, 8);
-    const seen = new Set(live.map((p) => `${p.name}:${p.lat.toFixed(4)}`));
-    const merged = [
-      ...live,
-      ...gazetteer.filter((p) => !seen.has(`${p.name}:${p.lat.toFixed(4)}`)),
-    ].slice(0, 8);
-    return NextResponse.json({
-      places: merged,
-      source: live.length > 0 ? "mixed" : "gazetteer",
-    });
-  } catch {
-    return NextResponse.json({ places: gazetteer, source: "gazetteer" });
-  }
+  const osm = kakao.length > 0 ? [] : await searchNominatim(query, 8);
+  const places = mergePlaces([kakao, osm, gazetteer]);
+  const source =
+    kakao.length > 0 ? "mixed" : osm.length > 0 ? "nominatim" : "gazetteer";
+  return NextResponse.json({ places, source });
 }

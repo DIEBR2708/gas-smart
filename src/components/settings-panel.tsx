@@ -217,7 +217,6 @@ export function SettingsPanel({
       <section className="space-y-3">
         <SectionTitle icon={RouteIcon}>경로</SectionTitle>
         <PlaceSearch
-          key={`origin-${origin?.name ?? ""}-${origin?.lat ?? 0}`}
           id="origin"
           label="출발"
           value={origin}
@@ -225,15 +224,16 @@ export function SettingsPanel({
           allowGeolocation
         />
         <PlaceSearch
-          key={`dest-${destination?.name ?? ""}-${destination?.lat ?? 0}`}
           id="destination"
           label="도착"
           value={destination}
           onChange={onDestinationChange}
+          allowGeolocation
         />
         <p className="text-[11px] leading-relaxed text-muted-foreground">
-          아래 샘플 경로를 누르면 출발·도착이 채워집니다. 직접 검색한 좌표는
-          카카오 키가 있으면 실도로로, 없으면 직선 근사로 계산합니다.
+          지명·도로명으로 검색하거나 현재 위치를 쓰세요. 미리보기에서 위치가
+          막히면 지도 위 검색창의 「지도에서」를 누른 뒤 지도를 찍으면 됩니다.
+          아래 샘플 경로는 출발·도착을 한 번에 채웁니다.
         </p>
         <div className="space-y-1.5">
           {routes.map((route) => {

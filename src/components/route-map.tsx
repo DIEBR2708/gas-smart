@@ -41,6 +41,8 @@ interface Props {
   bestId: string | null;
   itineraryIds?: string[];
   onSelect: (stationId: string) => void;
+  pickEnabled?: boolean;
+  onPickPoint?: (lat: number, lng: number) => void;
 }
 
 function markerColor(option: RankedOption, bestId: string | null): string {
@@ -108,6 +110,8 @@ export default function RouteMap({
   bestId,
   itineraryIds = [],
   onSelect,
+  pickEnabled = false,
+  onPickPoint,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -118,6 +122,8 @@ export default function RouteMap({
   const observerRef = useRef<ResizeObserver | null>(null);
   const fittedRouteRef = useRef<string | null>(null);
   const onSelectRef = useRef(onSelect);
+  const onPickPointRef = useRef(onPickPoint);
+  const pickEnabledRef = useRef(pickEnabled);
 
   const polyline = useMemo(
     () => route.polyline.map((p) => [p.lat, p.lng] as L.LatLngTuple),
@@ -129,6 +135,13 @@ export default function RouteMap({
   useEffect(() => {
     onSelectRef.current = onSelect;
   }, [onSelect]);
+
+  useEffect(() => {
+    onPickPointRef.current = onPickPoint;
+    pickEnabledRef.current = pickEnabled;
+    const container = mapRef.current?.getContainer();
+    container?.classList.toggle("pick-mode", pickEnabled);
+  }, [onPickPoint, pickEnabled]);
 
   // 언마운트 시 지도 인스턴스를 정리한다.
   useEffect(
@@ -174,6 +187,11 @@ export default function RouteMap({
       detourLayerRef.current = L.layerGroup().addTo(map);
       stationLayerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
+      map.on("click", (event) => {
+        if (!pickEnabledRef.current) return;
+        onPickPointRef.current?.(event.latlng.lat, event.latlng.lng);
+      });
+      map.getContainer().classList.toggle("pick-mode", pickEnabledRef.current);
 
       // flex 레이아웃 안에서 컨테이너 크기가 나중에 바뀌면 Leaflet이 캐시한
       // 크기가 틀어져 타일이 잘리거나 클릭 좌표가 밀린다.

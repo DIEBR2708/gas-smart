@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlaskConical, Loader2, Map as MapIcon, SlidersHorizontal } from "lucide-react";
+import { PlaceSearch } from "@/components/place-search";
 import { ResultPanel } from "@/components/result-panel";
 import { SettingsPanel } from "@/components/settings-panel";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +35,7 @@ import type {
   StationReport,
   Vehicle,
 } from "@/lib/domain/types";
-import { fetchPlan, type PlanResponse } from "@/lib/plan-client";
+import { fetchPlan, reverseGeocodePlace, type PlanResponse } from "@/lib/plan-client";
 import { cn } from "@/lib/utils";
 
 const RouteMap = dynamic(() => import("@/components/route-map"), {
@@ -91,6 +92,7 @@ export function Planner({ routes }: Props) {
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("result");
+  const [mapPick, setMapPick] = useState<"origin" | "destination" | null>(null);
 
   const requestSeq = useRef(0);
 
@@ -179,9 +181,28 @@ export function Planner({ routes }: Props) {
     routes[0];
 
   const handleSelect = useCallback((id: string) => {
+    if (mapPick) return;
     setSelectedId(id);
     setTab("result");
-  }, []);
+  }, [mapPick]);
+
+  const applyPickedPoint = useCallback(
+    async (lat: number, lng: number) => {
+      const target = mapPick;
+      if (!target) return;
+      let place: NamedPlace = { name: "지도에서 지정", lat, lng };
+      try {
+        place = (await reverseGeocodePlace(lat, lng)) ?? place;
+      } catch {
+        /* 좌표만으로도 경로를 계산할 수 있다 */
+      }
+      if (target === "origin") setOrigin(place);
+      else setDestination(place);
+      setMapPick(null);
+      setError(null);
+    },
+    [mapPick],
+  );
 
   const handleSampleRoute = useCallback(
     (id: string) => {
@@ -276,7 +297,41 @@ export function Planner({ routes }: Props) {
             bestId={plan?.best?.station.id ?? null}
             itineraryIds={itineraryIds}
             onSelect={handleSelect}
+            pickEnabled={mapPick !== null}
+            onPickPoint={(lat, lng) => void applyPickedPoint(lat, lng)}
           />
+          <div className="pointer-events-auto absolute top-3 left-3 z-[500] w-[min(calc(100%-1.5rem),20.5rem)] space-y-2 rounded-xl border border-border bg-background/92 p-3 shadow-lg backdrop-blur">
+            <PlaceSearch
+              id="map-origin"
+              label="출발"
+              value={origin}
+              onChange={(place) => {
+                setOrigin(place);
+                setMapPick(null);
+              }}
+              allowGeolocation
+              mapPickActive={mapPick === "origin"}
+              onRequestMapPick={() =>
+                setMapPick((current) => (current === "origin" ? null : "origin"))
+              }
+            />
+            <PlaceSearch
+              id="map-destination"
+              label="도착"
+              value={destination}
+              onChange={(place) => {
+                setDestination(place);
+                setMapPick(null);
+              }}
+              allowGeolocation
+              mapPickActive={mapPick === "destination"}
+              onRequestMapPick={() =>
+                setMapPick((current) =>
+                  current === "destination" ? null : "destination",
+                )
+              }
+            />
+          </div>
           <div className="pointer-events-none absolute top-3 right-3 z-[500] hidden flex-col gap-1 rounded-lg border border-border bg-background/85 px-2.5 py-2 text-[11px] backdrop-blur sm:flex">
             <Legend color="#f5b544" label="최저 실질비용" />
             <Legend color="#4ade80" label="기준선보다 이득" />
