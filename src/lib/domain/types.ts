@@ -256,6 +256,14 @@ export interface RankedOption extends RefuelOption {
    * 사용자에게 "왜 이 정도 가격차는 우회할 가치가 없는지"를 설명하는 숫자.
    */
   breakEvenDetourKm: number;
+  /**
+   * 절감액 중 "이번 여행에 쓰지 않고 탱크에 채워둔 싼 연료"에서 나온 몫 (원).
+   *
+   * 가득 주유에서는 절감액의 상당 부분이 가격차가 아니라 물량에서 나온다.
+   * 나중에 쓸 연료를 싸게 선구매한 것이니 실제 이득이 맞지만, 지금 당장
+   * 지갑에서 덜 나가는 돈은 아니다. 섞어서 보여주면 과장이 된다.
+   */
+  stockUpValueKrw: number;
   rank: number;
 }
 

@@ -67,9 +67,30 @@ describe("buildRefuelPlan", () => {
   it("연료가 넉넉하면 주유가 필요 없다고 판정한다", async () => {
     const result = await plan({
       vehicle: { currentFuelL: 58, tankCapacityL: 60, kmPerLiter: 12 },
+      preferences: { fillPolicy: { mode: "toDestination" } },
     });
     expect(result.canReachWithoutRefueling).toBe(true);
     expect(result.verdict).toBe("no-refuel-needed");
+  });
+
+  it("가득 주유의 절감액 중 재고 선구매분을 분리해 알려준다", async () => {
+    const result = await plan({ preferences: { fillPolicy: { mode: "full" } } });
+    const best = result.best!;
+    // 시세보다 싼 곳에서 가득 채우면 남는 연료에도 이득이 붙는다.
+    // 그 몫은 지금 지갑에서 덜 나가는 돈이 아니므로 따로 표시해야 한다.
+    expect(best.surplusFuelL).toBeGreaterThan(0);
+    expect(best.stockUpValueKrw).toBeGreaterThan(0);
+    expect(best.stockUpValueKrw).toBeLessThanOrEqual(best.savingKrw + 1e-6);
+  });
+
+  it("필요한 만큼만 넣으면 재고 선구매분이 생기지 않는다", async () => {
+    const result = await plan({
+      preferences: { fillPolicy: { mode: "toDestination" } },
+    });
+    for (const option of result.options) {
+      expect(option.surplusFuelL).toBeLessThan(1e-6);
+      expect(option.stockUpValueKrw).toBeLessThan(1e-6);
+    }
   });
 
   it("연료가 거의 없으면 먼 주유소를 후보에서 제외한다", async () => {
@@ -82,9 +103,17 @@ describe("buildRefuelPlan", () => {
     ).toBe(true);
   });
 
-  it("시간의 가치를 극단적으로 높이면 우회를 권하지 않는다", async () => {
-    const result = await plan({ preferences: { timeValueKrwPerMin: 5000 } });
-    expect(["stay-on-route", "marginal"]).toContain(result.verdict);
+  it("시간의 가치를 높이면 더 짧은 우회를 고른다", async () => {
+    const wide = { maxDetourKm: 20, maxDetourMin: 60 };
+    const timeIsFree = await plan({
+      preferences: { ...wide, timeValueKrwPerMin: 0 },
+    });
+    const timeIsExpensive = await plan({
+      preferences: { ...wide, timeValueKrwPerMin: 3000 },
+    });
+    expect(timeIsExpensive.best!.detour.extraDurationS).toBeLessThanOrEqual(
+      timeIsFree.best!.detour.extraDurationS,
+    );
   });
 
   it("절감 기준을 높이면 애매한 판정으로 내려간다", async () => {

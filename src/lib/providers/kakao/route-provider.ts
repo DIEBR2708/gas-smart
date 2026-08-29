@@ -182,25 +182,3 @@ export class KakaoRouteProvider implements RouteProvider {
     return curveBetween(joinPoint, station);
   }
 }
-
-/**
- * 카카오내비 앱으로 길안내를 넘기는 딥링크.
- * 앱이 없으면 동작하지 않으므로 웹 지도 링크를 대체 수단으로 함께 제공해야 한다.
- */
-export function kakaoNaviDeepLink(destination: NamedPlace): string {
-  const params = new URLSearchParams({
-    name: destination.name,
-    x: String(destination.lng),
-    y: String(destination.lat),
-    coord_type: "wgs84",
-  });
-  return `kakaonavi://navigate?${params.toString()}`;
-}
-
-/** 카카오맵 웹 길찾기 (앱 미설치 대비) */
-export function kakaoMapDirectionsUrl(
-  origin: NamedPlace,
-  destination: NamedPlace,
-): string {
-  return `https://map.kakao.com/?sName=${encodeURIComponent(origin.name)}&eName=${encodeURIComponent(destination.name)}`;
-}

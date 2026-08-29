@@ -269,6 +269,9 @@ export async function buildRefuelPlan(
         timeValueKrwPerMin: preferences.timeValueKrwPerMin,
         detourSpeedKmh: DETOUR_SPEED_KMH,
       }),
+      stockUpValueKrw:
+        Math.max(0, referencePriceKrwPerL - option.effectivePriceKrwPerL) *
+        option.surplusFuelL,
       rank: index + 1,
     };
   });
@@ -352,8 +355,13 @@ function decide(args: {
     };
   }
 
+  const stockUpNote =
+    best.stockUpValueKrw > 500
+      ? ` 이 가운데 ${Math.round(best.stockUpValueKrw).toLocaleString("ko-KR")}원은 이번 여행에 쓰지 않고 탱크에 채워둔 싼 연료의 값입니다.`
+      : "";
+
   return {
     verdict: "detour-worth-it",
-    headline: `${best.station.name}로 ${(best.detour.extraDistanceM / 1000).toFixed(1)}km 우회하면 우회 연료비와 시간까지 계산해도 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 절약됩니다.`,
+    headline: `${best.station.name}로 ${(best.detour.extraDistanceM / 1000).toFixed(1)}km 우회하면 우회 연료비와 시간까지 계산해도 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 절약됩니다.${stockUpNote}`,
   };
 }

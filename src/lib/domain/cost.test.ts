@@ -98,7 +98,10 @@ describe("evaluateOption", () => {
   });
 
   it("우회로 태우는 연료가 주입량에 반영된다", () => {
-    const c = ctx({ vehicle: { kmPerLiter: 10 } });
+    const c = ctx({
+      vehicle: { kmPerLiter: 10 },
+      preferences: { fillPolicy: { mode: "toDestination" } },
+    });
     const near = evaluateOption(testStation(), testDetour(), c)!;
     const far = evaluateOption(
       testStation(),

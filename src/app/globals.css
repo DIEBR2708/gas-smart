@@ -84,37 +84,37 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
+  --background: oklch(0.19 0.026 262);
+  --foreground: oklch(0.965 0.006 250);
+  --card: oklch(0.235 0.028 262);
+  --card-foreground: oklch(0.965 0.006 250);
+  --popover: oklch(0.235 0.028 262);
+  --popover-foreground: oklch(0.965 0.006 250);
+  --primary: oklch(0.79 0.16 78);
+  --primary-foreground: oklch(0.21 0.03 262);
+  --secondary: oklch(0.3 0.03 262);
+  --secondary-foreground: oklch(0.965 0.006 250);
+  --muted: oklch(0.29 0.028 262);
+  --muted-foreground: oklch(0.72 0.022 258);
+  --accent: oklch(0.32 0.035 262);
+  --accent-foreground: oklch(0.965 0.006 250);
+  --destructive: oklch(0.68 0.19 22);
+  --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --ring: oklch(0.79 0.16 78 / 60%);
+  --chart-1: oklch(0.79 0.16 78);
+  --chart-2: oklch(0.74 0.16 158);
+  --chart-3: oklch(0.68 0.15 250);
+  --chart-4: oklch(0.7 0.18 20);
+  --chart-5: oklch(0.6 0.03 262);
+  --sidebar: oklch(0.21 0.027 262);
+  --sidebar-foreground: oklch(0.965 0.006 250);
+  --sidebar-primary: oklch(0.79 0.16 78);
+  --sidebar-primary-foreground: oklch(0.21 0.03 262);
+  --sidebar-accent: oklch(0.3 0.03 262);
+  --sidebar-accent-foreground: oklch(0.965 0.006 250);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.79 0.16 78 / 60%);
 }
 
 @layer base {
@@ -127,4 +127,67 @@
   html {
     @apply font-sans;
   }
+}
+
+@layer components {
+  /* 지도 컨테이너와 팝업을 앱 테마에 맞춘다. Leaflet 기본 스타일은 밝은 톤이다. */
+  .leaflet-container {
+    background: oklch(0.17 0.024 262);
+    font-family: inherit;
+  }
+
+  .leaflet-control-attribution {
+    background: oklch(0.19 0.026 262 / 82%) !important;
+    color: oklch(0.7 0.02 258) !important;
+    font-size: 10px;
+  }
+
+  .leaflet-control-attribution a {
+    color: oklch(0.78 0.03 258) !important;
+  }
+
+  .leaflet-control-zoom a {
+    background: oklch(0.235 0.028 262) !important;
+    color: oklch(0.94 0.006 250) !important;
+    border-color: oklch(1 0 0 / 12%) !important;
+  }
+
+  .leaflet-control-zoom a:hover {
+    background: oklch(0.31 0.032 262) !important;
+  }
+
+  .leaflet-popup-content-wrapper,
+  .leaflet-popup-tip {
+    background: oklch(0.235 0.028 262);
+    color: oklch(0.965 0.006 250);
+    box-shadow: 0 10px 40px oklch(0 0 0 / 45%);
+  }
+
+  .leaflet-popup-content {
+    margin: 0.75rem 0.9rem;
+    font-size: 0.8125rem;
+  }
+
+  .station-marker {
+    display: grid;
+    place-items: center;
+    border-radius: 9999px;
+    border: 2px solid oklch(0.19 0.026 262);
+    font-size: 10px;
+    font-weight: 600;
+    color: oklch(0.19 0.026 262);
+    box-shadow: 0 2px 10px oklch(0 0 0 / 45%);
+    transition: transform 120ms ease;
+  }
+
+  .station-marker--best {
+    outline: 3px solid oklch(0.79 0.16 78 / 55%);
+    transform: scale(1.18);
+  }
+}
+
+/* 스크롤 영역이 카드 안에서 자연스럽게 끝나도록 */
+.thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.4 0.03 262) transparent;
 }

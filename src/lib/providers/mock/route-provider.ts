@@ -1,8 +1,7 @@
 import {
   SAMPLE_ROUTES,
-  getSampleRouteSeed,
-  seedToRoute,
   SAMPLE_ROUTE_SEEDS,
+  seedToRoute,
 } from "@/lib/data/sample-routes";
 import {
   cumulativeDistances,

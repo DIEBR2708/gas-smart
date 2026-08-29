@@ -12,7 +12,7 @@ export const DEFAULT_VEHICLE: Vehicle = {
   fuelKind: "gasoline",
   kmPerLiter: 11.5,
   tankCapacityL: 60,
-  currentFuelL: 14,
+  currentFuelL: 9,
   reserveL: 6,
 };
 
@@ -22,7 +22,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   extraDiscountRate: 0,
   maxDetourKm: 8,
   maxDetourMin: 15,
-  fillPolicy: { mode: "toDestination" },
+  // 실제 운전자 대부분은 가득 채운다. 기본값이 현실과 달라야 할 이유가 없다.
+  fillPolicy: { mode: "full" },
   minMeaningfulSavingKrw: 500,
   selfServiceOnly: false,
   brands: [],
