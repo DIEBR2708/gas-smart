@@ -149,7 +149,11 @@ export function Planner({ routes }: Props) {
             bestId={plan?.best?.station.id ?? null}
             onSelect={handleSelect}
           />
-          <div className="pointer-events-none absolute bottom-3 left-3 z-[500] flex flex-col gap-1 rounded-lg border border-border bg-background/85 px-2.5 py-2 text-[11px] backdrop-blur">
+          {/*
+            좌하단은 Leaflet 확대 컨트롤(좌상단), 출처 표시(우하단), 그리고
+            개발 모드의 Next 배지와 겹친다. 범례는 우상단에 둔다.
+          */}
+          <div className="pointer-events-none absolute top-3 right-3 z-[500] hidden flex-col gap-1 rounded-lg border border-border bg-background/85 px-2.5 py-2 text-[11px] backdrop-blur sm:flex">
             <Legend color="#f5b544" label="최저 실질비용" />
             <Legend color="#4ade80" label="기준선보다 이득" />
             <Legend color="#94a3b8" label="차이 미미" />

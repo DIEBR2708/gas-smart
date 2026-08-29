@@ -242,6 +242,7 @@ export function CostBreakdown({
         <Button
           size="sm"
           className="flex-1"
+          nativeButton={false}
           render={<a href={kakaoNaviDeepLink(naviTarget)} />}
         >
           <Navigation className="size-4" />
@@ -251,6 +252,7 @@ export function CostBreakdown({
           size="sm"
           variant="outline"
           className="flex-1"
+          nativeButton={false}
           render={
             <a
               href={kakaoMapRouteUrl(route.origin, naviTarget, route.destination)}

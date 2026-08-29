@@ -15,11 +15,23 @@ import { krw, perLiter } from "@/lib/format";
  * 계산한 결과를 다른 지도 위에 그리는 조합은 검토가 필요하다.
  */
 
+/**
+ * 표준 OpenStreetMap 타일. 키가 필요 없고 출처 표시만 하면 된다.
+ * 밝은 톤이므로 어두운 테마에 맞추기 위해 CSS에서 타일 페인만 반전시킨다
+ * (`.leaflet-tile-pane` 필터). 마커와 경로선은 필터 영향을 받지 않는다.
+ *
+ * CARTO의 dark_all 타일은 이제 키 없이 쓰면 "API KEY REQUIRED" 워터마크가
+ * 찍히므로 쓰지 않는다.
+ */
 const TILES = {
-  url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
   attribution:
-    '지도 &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · 타일 &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    '지도 데이터 &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> 기여자',
 };
+
+/** 경로를 받기 전에 보여줄 기본 뷰 (남한 전체) */
+const INITIAL_CENTER: L.LatLngTuple = [36.4, 127.8];
+const INITIAL_ZOOM = 7;
 
 interface Props {
   route: Route;
@@ -72,6 +84,21 @@ function popupHtml(option: RankedOption): string {
     </div>`;
 }
 
+function endpointMarker(place: LatLng & { name: string }, fill: string) {
+  return L.marker([place.lat, place.lng], {
+    icon: L.divIcon({
+      className: "",
+      html: `<div style="display:flex;align-items:center;gap:6px">
+        <span style="width:12px;height:12px;border-radius:9999px;background:${fill};border:3px solid #131a2e;box-shadow:0 0 0 2px ${fill}55"></span>
+        <span style="background:#131a2ecc;color:#e2e8f0;font-size:11px;padding:2px 6px;border-radius:6px;white-space:nowrap">${place.name}</span>
+      </div>`,
+      iconSize: [12, 12],
+      iconAnchor: [6, 6],
+    }),
+    interactive: false,
+  });
+}
+
 export default function RouteMap({
   route,
   options,
@@ -82,115 +109,167 @@ export default function RouteMap({
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
-  const layersRef = useRef<L.LayerGroup | null>(null);
   const routeLayerRef = useRef<L.LayerGroup | null>(null);
+  const detourLayerRef = useRef<L.LayerGroup | null>(null);
+  const stationLayerRef = useRef<L.LayerGroup | null>(null);
+  const markersRef = useRef(new Map<string, L.Marker>());
+  const observerRef = useRef<ResizeObserver | null>(null);
   const fittedRouteRef = useRef<string | null>(null);
+  const onSelectRef = useRef(onSelect);
 
   const polyline = useMemo(
-    () => route.polyline.map((p) => [p.lat, p.lng] as [number, number]),
+    () => route.polyline.map((p) => [p.lat, p.lng] as L.LatLngTuple),
     [route],
   );
 
+  // 마커 클릭 핸들러는 마커를 만들 때 한 번만 붙인다. 콜백이 바뀔 때마다
+  // 마커를 다시 만들지 않도록 최신 콜백을 ref로 들고 있는다.
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current, {
-      zoomControl: true,
-      attributionControl: true,
-      preferCanvas: true,
-    });
-    L.tileLayer(TILES.url, {
-      attribution: TILES.attribution,
-      maxZoom: 19,
-      subdomains: "abcd",
-    }).addTo(map);
-    routeLayerRef.current = L.layerGroup().addTo(map);
-    layersRef.current = L.layerGroup().addTo(map);
-    mapRef.current = map;
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
 
-    return () => {
-      map.remove();
+  // 언마운트 시 지도 인스턴스를 정리한다.
+  useEffect(
+    () => () => {
+      observerRef.current?.disconnect();
+      observerRef.current = null;
+      mapRef.current?.remove();
       mapRef.current = null;
-    };
-  }, []);
+      routeLayerRef.current = null;
+      detourLayerRef.current = null;
+      stationLayerRef.current = null;
+      markersRef.current.clear();
+      fittedRouteRef.current = null;
+    },
+    [],
+  );
 
-  // 경로 레이어
+  /**
+   * 지도 생성과 모든 그리기를 하나의 이펙트에서 처리한다.
+   *
+   * 생성과 그리기를 별도 이펙트로 나누면, 한쪽만 재실행됐을 때 레이어가
+   * 사라진 지도에 붙는 순서 버그가 생긴다. 또 Leaflet은 뷰(center/zoom)가
+   * 정해지기 전에 추가한 레이어를 큐에 넣어두고 DOM에 그리지 않기 때문에,
+   * 타일 레이어를 붙이기 전에 setView를 먼저 호출해야 한다.
+   */
   useEffect(() => {
-    const map = mapRef.current;
-    const layer = routeLayerRef.current;
-    if (!map || !layer) return;
-    layer.clearLayers();
+    const element = containerRef.current;
+    if (!element) return;
 
+    let map = mapRef.current;
+    if (!map) {
+      map = L.map(element, {
+        zoomControl: true,
+        attributionControl: true,
+        preferCanvas: true,
+      });
+      map.setView(INITIAL_CENTER, INITIAL_ZOOM);
+      L.tileLayer(TILES.url, {
+        attribution: TILES.attribution,
+        maxZoom: 19,
+      }).addTo(map);
+      routeLayerRef.current = L.layerGroup().addTo(map);
+      detourLayerRef.current = L.layerGroup().addTo(map);
+      stationLayerRef.current = L.layerGroup().addTo(map);
+      mapRef.current = map;
+
+      // flex 레이아웃 안에서 컨테이너 크기가 나중에 바뀌면 Leaflet이 캐시한
+      // 크기가 틀어져 타일이 잘리거나 클릭 좌표가 밀린다.
+      const observer = new ResizeObserver(() => map?.invalidateSize());
+      observer.observe(element);
+      observerRef.current = observer;
+    }
+
+    const routeLayer = routeLayerRef.current;
+    const detourLayer = detourLayerRef.current;
+    const stationLayer = stationLayerRef.current;
+    if (!routeLayer || !detourLayer || !stationLayer) return;
+
+    map.invalidateSize();
+
+    routeLayer.clearLayers();
     L.polyline(polyline, {
       color: "#1e3a8a",
       weight: 11,
       opacity: 0.45,
       lineJoin: "round",
-    }).addTo(layer);
+    }).addTo(routeLayer);
     L.polyline(polyline, {
       color: "#60a5fa",
       weight: 4,
       opacity: 0.95,
       lineJoin: "round",
-    }).addTo(layer);
-
-    const endpoint = (p: LatLng, label: string, fill: string) =>
-      L.marker([p.lat, p.lng], {
-        icon: L.divIcon({
-          className: "",
-          html: `<div style="display:flex;align-items:center;gap:6px;transform:translate(-9px,-9px)">
-            <span style="width:14px;height:14px;border-radius:9999px;background:${fill};border:3px solid #0b1020;box-shadow:0 0 0 2px ${fill}55"></span>
-            <span style="background:#0b1020cc;color:#e2e8f0;font-size:11px;padding:2px 6px;border-radius:6px;white-space:nowrap">${label}</span>
-          </div>`,
-          iconSize: [0, 0],
-        }),
-        interactive: false,
-      }).addTo(layer);
-
-    endpoint(route.origin, route.origin.name, "#38bdf8");
-    endpoint(route.destination, route.destination.name, "#f472b6");
+    }).addTo(routeLayer);
+    endpointMarker(route.origin, "#38bdf8").addTo(routeLayer);
+    endpointMarker(route.destination, "#f472b6").addTo(routeLayer);
 
     if (fittedRouteRef.current !== route.id) {
-      map.fitBounds(L.latLngBounds(polyline).pad(0.12));
+      map.fitBounds(L.latLngBounds(polyline).pad(0.08));
       fittedRouteRef.current = route.id;
     }
-  }, [polyline, route]);
 
-  // 후보 마커와 선택된 후보의 우회 구간
-  useEffect(() => {
-    const layer = layersRef.current;
-    if (!layer) return;
-    layer.clearLayers();
+    detourLayer.clearLayers();
 
+    /*
+      마커는 지우고 다시 만드는 대신 제자리에서 갱신한다.
+      매번 새로 만들면 사용자가 마커를 클릭해 열린 팝업이, 그 클릭이 유발한
+      선택 상태 변경 때문에 곧바로 사라진다. 슬라이더를 움직일 때 마커가
+      깜빡이는 문제도 같은 원인이다.
+    */
+    const alive = new Set<string>();
     for (const option of options) {
-      const selected = option.station.id === selectedId;
-      const isBest = option.station.id === bestId;
+      const stationId = option.station.id;
+      alive.add(stationId);
+      const selected = stationId === selectedId;
+      const isBest = stationId === bestId;
 
       if (selected || isBest) {
-        const shape = shapes[option.station.id];
+        const shape = shapes[stationId];
         if (shape?.length) {
           L.polyline(
-            shape.map((p) => [p.lat, p.lng] as [number, number]),
+            shape.map((p) => [p.lat, p.lng] as L.LatLngTuple),
             {
               color: isBest ? "#f5b544" : "#e2e8f0",
               weight: 3,
               opacity: 0.9,
               dashArray: "6 6",
             },
-          ).addTo(layer);
+          ).addTo(detourLayer);
         }
       }
 
+      const icon = markerIcon(option, bestId, selected);
+      const zIndexOffset = isBest ? 1000 : selected ? 800 : 0;
+      const existing = markersRef.current.get(stationId);
+
+      if (existing) {
+        existing.setLatLng([option.station.lat, option.station.lng]);
+        existing.setIcon(icon);
+        existing.setZIndexOffset(zIndexOffset);
+        existing.setPopupContent(popupHtml(option));
+        continue;
+      }
+
       const marker = L.marker([option.station.lat, option.station.lng], {
-        icon: markerIcon(option, bestId, selected),
-        zIndexOffset: isBest ? 1000 : selected ? 800 : 0,
+        icon,
+        zIndexOffset,
+        title: option.station.name,
       })
-        .addTo(layer)
+        .addTo(stationLayer)
         .bindPopup(popupHtml(option), { closeButton: false });
 
-      marker.on("click", () => onSelect(option.station.id));
-      if (selected) marker.openPopup();
+      // 팝업은 사용자가 마커를 눌렀을 때만 열린다(Leaflet 기본 동작).
+      // 선택 상태를 팝업으로 자동 표시하면 경로와 다른 후보를 가려버린다.
+      marker.on("click", () => onSelectRef.current(stationId));
+      markersRef.current.set(stationId, marker);
     }
-  }, [options, shapes, selectedId, bestId, onSelect]);
+
+    for (const [stationId, marker] of markersRef.current) {
+      if (alive.has(stationId)) continue;
+      marker.remove();
+      markersRef.current.delete(stationId);
+    }
+  }, [polyline, route, options, shapes, selectedId, bestId]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }

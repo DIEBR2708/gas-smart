@@ -131,7 +131,7 @@ function Segmented<T extends string>({
             type="button"
             onClick={() => onChange(option.value)}
             className={cn(
-              "rounded-lg border px-2 py-1.5 text-xs transition-colors",
+              "w-full rounded-lg border px-2 py-1.5 text-xs transition-colors",
               active
                 ? "border-primary/70 bg-primary/15 text-primary"
                 : "border-border bg-input/20 text-muted-foreground hover:bg-input/40 hover:text-foreground",
@@ -140,10 +140,18 @@ function Segmented<T extends string>({
             {option.label}
           </button>
         );
-        if (!option.hint) return <span key={option.value}>{button}</span>;
+        if (!option.hint) {
+          return (
+            <span key={option.value} className="block">
+              {button}
+            </span>
+          );
+        }
         return (
           <Tooltip key={option.value}>
-            <TooltipTrigger render={<span />}>{button}</TooltipTrigger>
+            <TooltipTrigger render={<span className="block" />}>
+              {button}
+            </TooltipTrigger>
             <TooltipContent className="max-w-56">{option.hint}</TooltipContent>
           </Tooltip>
         );

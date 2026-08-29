@@ -136,6 +136,16 @@
     font-family: inherit;
   }
 
+  /*
+    OpenStreetMap 기본 타일은 밝은 톤이다. 타일 페인만 반전·색상 회전해
+    어두운 테마에 맞춘다. 마커와 경로선은 다른 페인에 있어 영향을 받지 않으므로
+    색으로 전달하는 정보(절감 여부)가 왜곡되지 않는다.
+  */
+  .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(180deg) saturate(0.22) brightness(0.86)
+      contrast(1.04);
+  }
+
   .leaflet-control-attribution {
     background: oklch(0.19 0.026 262 / 82%) !important;
     color: oklch(0.7 0.02 258) !important;
