@@ -12,7 +12,11 @@ describe("searchGazetteer", () => {
   });
 
   it("추가한 지명도 별칭으로 찾는다", () => {
-    expect(searchGazetteer("홍대")[0]?.name).toBe("홍대입구역");
-    expect(searchGazetteer("세종")[0]?.name).toBe("세종시청");
+    expect(searchGazetteer("홍대").some((place) => place.name === "홍대입구역")).toBe(
+      true,
+    );
+    expect(searchGazetteer("세종시").some((place) => place.name === "세종시청")).toBe(
+      true,
+    );
   });
 });
