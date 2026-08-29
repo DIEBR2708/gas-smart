@@ -216,6 +216,8 @@ export interface Detour {
   /** 본선 진입 지점 좌표. 지도에 우회 구간을 그릴 때 쓴다. */
   joinPoint: LatLng;
   source: DetourSource;
+  /** 출발→주유소→도착 실도로(또는 근사) 형상. 선택 시 본선 대신 그린다. */
+  viaPolyline?: LatLng[];
 }
 
 export type WarningCode =

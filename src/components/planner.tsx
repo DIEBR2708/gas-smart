@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FlaskConical, Loader2, Map as MapIcon, SlidersHorizontal } from "lucide-react";
 import { PlaceSearch } from "@/components/place-search";
 import { ResultPanel } from "@/components/result-panel";
@@ -156,11 +156,7 @@ export function Planner({ routes }: Props) {
             const stillThere = response.plan.options.some(
               (o) => o.station.id === current,
             );
-            return stillThere
-              ? current
-              : (response.plan.best?.station.id ??
-                  response.plan.itinerary[0]?.option.station.id ??
-                  null);
+            return stillThere ? current : null;
           });
         })
         .catch((cause: unknown) => {
@@ -181,11 +177,7 @@ export function Planner({ routes }: Props) {
             setFromCache(true);
             setCachedAt(cached.savedAt);
             setError(message);
-            setSelectedId(
-              cached.response.plan.best?.station.id ??
-                cached.response.plan.itinerary[0]?.option.station.id ??
-                null,
-            );
+            setSelectedId(null);
           } else {
             setError(message);
           }
@@ -212,7 +204,7 @@ export function Planner({ routes }: Props) {
 
   const handleSelect = useCallback((id: string) => {
     if (mapPick) return;
-    setSelectedId(id);
+    setSelectedId((current) => (current === id ? null : id));
     setTab("result");
   }, [mapPick]);
 
@@ -265,10 +257,6 @@ export function Planner({ routes }: Props) {
 
   const plan = data?.plan ?? null;
   const isSample = data?.dataMode !== "live";
-  const itineraryIds = useMemo(
-    () => plan?.itinerary.map((stop) => stop.option.station.id) ?? [],
-    [plan],
-  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -325,7 +313,6 @@ export function Planner({ routes }: Props) {
             shapes={data?.shapes ?? {}}
             selectedId={selectedId}
             bestId={plan?.best?.station.id ?? null}
-            itineraryIds={itineraryIds}
             onSelect={handleSelect}
             pickEnabled={mapPick !== null}
             onPickPoint={(lat, lng) => void applyPickedPoint(lat, lng)}
@@ -363,10 +350,14 @@ export function Planner({ routes }: Props) {
             />
           </div>
           <div className="pointer-events-none absolute top-3 right-3 z-[500] hidden flex-col gap-1 rounded-lg border border-border bg-background/85 px-2.5 py-2 text-[11px] backdrop-blur sm:flex">
-            <Legend color="#f5b544" label="최저 실질비용" />
+            <Legend color="#60a5fa" label="본선 경로" />
+            <Legend color="#f5b544" label="선택한 주유소 경유" />
             <Legend color="#4ade80" label="기준선보다 이득" />
             <Legend color="#94a3b8" label="차이 미미" />
             <Legend color="#f87171" label="기준선보다 손해" />
+            <span className="pt-0.5 text-[10px] text-muted-foreground">
+              주유소를 누르면 경유 경로
+            </span>
           </div>
         </div>
 
@@ -395,7 +386,7 @@ export function Planner({ routes }: Props) {
                 loading={loading}
                 error={error}
                 selectedId={selectedId}
-                onSelect={setSelectedId}
+                onSelect={handleSelect}
                 fromCache={fromCache}
                 cachedAt={cachedAt}
                 reports={reports}

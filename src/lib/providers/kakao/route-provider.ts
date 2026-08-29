@@ -1,4 +1,8 @@
-import { curveBetween, cumulativeDistances, projectOntoPolyline } from "@/lib/domain/geo";
+import {
+  cumulativeDistances,
+  projectOntoPolyline,
+  viaRoutePolyline,
+} from "@/lib/domain/geo";
 import type {
   Detour,
   FuelKind,
@@ -236,6 +240,15 @@ export class KakaoRouteProvider implements RouteProvider {
           offRouteM: proj.offsetM,
           joinPoint: proj.point,
           source: "routing-api",
+          viaPolyline:
+            viaStation.polyline.length > 1
+              ? viaStation.polyline
+              : viaRoutePolyline(
+                  route.polyline,
+                  station,
+                  proj.point,
+                  proj.alongM,
+                ),
         });
       }
     }
@@ -243,7 +256,9 @@ export class KakaoRouteProvider implements RouteProvider {
     return out;
   }
 
-  detourShape(_route: Route, station: Station, joinPoint: LatLng): LatLng[] {
-    return curveBetween(joinPoint, station);
+  detourShape(route: Route, station: Station, joinPoint: LatLng): LatLng[] {
+    const cum = cumulativeDistances(route.polyline);
+    const proj = projectOntoPolyline(station, route.polyline, cum);
+    return viaRoutePolyline(route.polyline, station, joinPoint, proj.alongM);
   }
 }

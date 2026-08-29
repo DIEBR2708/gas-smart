@@ -2,8 +2,8 @@ import { SAMPLE_ROUTE_SEEDS, seedToRoute } from "@/lib/data/sample-routes";
 import { interpolateRoute } from "@/lib/domain/route-build";
 import {
   cumulativeDistances,
-  curveBetween,
   projectOntoPolyline,
+  viaRoutePolyline,
 } from "@/lib/domain/geo";
 import type { Detour, LatLng, NamedPlace, Route, Station } from "@/lib/domain/types";
 import type { RouteProvider } from "../types";
@@ -106,13 +106,21 @@ export class MockRouteProvider implements RouteProvider {
         offRouteM: proj.offsetM,
         joinPoint: proj.point,
         source: "geometric-estimate",
+        viaPolyline: viaRoutePolyline(
+          route.polyline,
+          station,
+          proj.point,
+          proj.alongM,
+        ),
       });
     }
 
     return out;
   }
 
-  detourShape(_route: Route, station: Station, joinPoint: LatLng): LatLng[] {
-    return curveBetween(joinPoint, station);
+  detourShape(route: Route, station: Station, joinPoint: LatLng): LatLng[] {
+    const cum = cumulativeDistances(route.polyline);
+    const proj = projectOntoPolyline(station, route.polyline, cum);
+    return viaRoutePolyline(route.polyline, station, joinPoint, proj.alongM);
   }
 }

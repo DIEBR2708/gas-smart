@@ -157,6 +157,48 @@ export function sampleAlongRoute(
  * 두 점을 잇는 완만한 곡선. 우회 구간을 지도에 그릴 때 직선보다 도로처럼 보인다.
  * 실제 경로 API를 붙이면 이 함수 대신 반환된 우회 구간 형상을 쓰면 된다.
  */
+/** 경로를 누적 거리 구간으로 잘라 낸다. 양 끝은 보간한다. */
+export function slicePolylineByDistance(
+  polyline: LatLng[],
+  fromM: number,
+  toM: number,
+  cum: number[] = cumulativeDistances(polyline),
+): LatLng[] {
+  if (polyline.length === 0) return [];
+  const total = cum[cum.length - 1] ?? 0;
+  const start = Math.max(0, Math.min(total, fromM));
+  const end = Math.max(start, Math.min(total, toM));
+  const out: LatLng[] = [pointAtDistance(polyline, start, cum)];
+  for (let i = 0; i < polyline.length; i += 1) {
+    if (cum[i] > start + 0.5 && cum[i] < end - 0.5) {
+      out.push(polyline[i]);
+    }
+  }
+  const last = pointAtDistance(polyline, end, cum);
+  const prev = out[out.length - 1];
+  if (!prev || haversineM(prev, last) > 0.5) out.push(last);
+  return out;
+}
+
+/**
+ * 본선을 따라가다 주유소에 들렀다가 다시 본선으로 합류하는 경유 경로.
+ * 실도로 길찾기 형상이 없을 때 지도용으로 쓴다.
+ */
+export function viaRoutePolyline(
+  routePolyline: LatLng[],
+  station: LatLng,
+  joinPoint: LatLng,
+  alongM: number,
+): LatLng[] {
+  const cum = cumulativeDistances(routePolyline);
+  const total = cum[cum.length - 1] ?? 0;
+  const before = slicePolylineByDistance(routePolyline, 0, alongM, cum);
+  const spur = curveBetween(joinPoint, station);
+  const back = curveBetween(station, joinPoint).slice(1);
+  const after = slicePolylineByDistance(routePolyline, alongM, total, cum).slice(1);
+  return [...before, ...spur.slice(1), ...back, ...after];
+}
+
 export function curveBetween(a: LatLng, b: LatLng, bulge = 0.18): LatLng[] {
   const mid = {
     lat: (a.lat + b.lat) / 2 - (b.lng - a.lng) * bulge,

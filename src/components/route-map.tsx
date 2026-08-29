@@ -39,7 +39,6 @@ interface Props {
   shapes: Record<string, LatLng[]>;
   selectedId: string | null;
   bestId: string | null;
-  itineraryIds?: string[];
   onSelect: (stationId: string) => void;
   pickEnabled?: boolean;
   onPickPoint?: (lat: number, lng: number) => void;
@@ -108,7 +107,6 @@ export default function RouteMap({
   shapes,
   selectedId,
   bestId,
-  itineraryIds = [],
   onSelect,
   pickEnabled = false,
   onPickPoint,
@@ -116,7 +114,6 @@ export default function RouteMap({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const routeLayerRef = useRef<L.LayerGroup | null>(null);
-  const detourLayerRef = useRef<L.LayerGroup | null>(null);
   const stationLayerRef = useRef<L.LayerGroup | null>(null);
   const markersRef = useRef(new Map<string, L.Marker>());
   const observerRef = useRef<ResizeObserver | null>(null);
@@ -151,7 +148,6 @@ export default function RouteMap({
       mapRef.current?.remove();
       mapRef.current = null;
       routeLayerRef.current = null;
-      detourLayerRef.current = null;
       stationLayerRef.current = null;
       markersRef.current.clear();
       fittedRouteRef.current = null;
@@ -184,7 +180,6 @@ export default function RouteMap({
         maxZoom: 19,
       }).addTo(map);
       routeLayerRef.current = L.layerGroup().addTo(map);
-      detourLayerRef.current = L.layerGroup().addTo(map);
       stationLayerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
       map.on("click", (event) => {
@@ -201,15 +196,39 @@ export default function RouteMap({
     }
 
     const routeLayer = routeLayerRef.current;
-    const detourLayer = detourLayerRef.current;
     const stationLayer = stationLayerRef.current;
-    if (!routeLayer || !detourLayer || !stationLayer) return;
+    if (!routeLayer || !stationLayer) return;
 
     map.invalidateSize();
 
     routeLayer.clearLayers();
     const driveable = route.driveable !== false && polyline.length >= 2;
-    if (driveable) {
+    const via = selectedId ? shapes[selectedId] : undefined;
+    const viaLine =
+      via && via.length > 1
+        ? via.map((p) => [p.lat, p.lng] as L.LatLngTuple)
+        : null;
+
+    if (driveable && viaLine) {
+      L.polyline(polyline, {
+        color: "#64748b",
+        weight: 5,
+        opacity: 0.28,
+        lineJoin: "round",
+      }).addTo(routeLayer);
+      L.polyline(viaLine, {
+        color: "#1e3a8a",
+        weight: 11,
+        opacity: 0.45,
+        lineJoin: "round",
+      }).addTo(routeLayer);
+      L.polyline(viaLine, {
+        color: "#f5b544",
+        weight: 4,
+        opacity: 0.95,
+        lineJoin: "round",
+      }).addTo(routeLayer);
+    } else if (driveable) {
       L.polyline(polyline, {
         color: "#1e3a8a",
         weight: 11,
@@ -237,8 +256,6 @@ export default function RouteMap({
       fittedRouteRef.current = route.id;
     }
 
-    detourLayer.clearLayers();
-
     /*
       마커는 지우고 다시 만드는 대신 제자리에서 갱신한다.
       매번 새로 만들면 사용자가 마커를 클릭해 열린 팝업이, 그 클릭이 유발한
@@ -251,22 +268,6 @@ export default function RouteMap({
       alive.add(stationId);
       const selected = stationId === selectedId;
       const isBest = stationId === bestId;
-
-      const onItinerary = itineraryIds.includes(stationId);
-      if (selected || isBest || onItinerary) {
-        const shape = shapes[stationId];
-        if (shape?.length) {
-          L.polyline(
-            shape.map((p) => [p.lat, p.lng] as L.LatLngTuple),
-            {
-              color: isBest ? "#f5b544" : "#e2e8f0",
-              weight: 3,
-              opacity: 0.9,
-              dashArray: "6 6",
-            },
-          ).addTo(detourLayer);
-        }
-      }
 
       const icon = markerIcon(option, bestId, selected);
       const zIndexOffset = isBest ? 1000 : selected ? 800 : 0;
@@ -299,7 +300,7 @@ export default function RouteMap({
       marker.remove();
       markersRef.current.delete(stationId);
     }
-  }, [polyline, route, options, shapes, selectedId, bestId, itineraryIds]);
+  }, [polyline, route, options, shapes, selectedId, bestId]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }

@@ -222,11 +222,13 @@ export async function POST(request: Request) {
     const shapes = Object.fromEntries(
       plan.options.map((option) => [
         option.station.id,
-        providers.routes.detourShape(
-          route,
-          option.station,
-          option.detour.joinPoint,
-        ),
+        option.detour.viaPolyline && option.detour.viaPolyline.length > 1
+          ? option.detour.viaPolyline
+          : providers.routes.detourShape(
+              route,
+              option.station,
+              option.detour.joinPoint,
+            ),
       ]),
     );
 

@@ -6,6 +6,8 @@ import {
   polylineLengthM,
   projectOntoPolyline,
   sampleAlongRoute,
+  slicePolylineByDistance,
+  viaRoutePolyline,
 } from "./geo";
 
 const SEOUL = { lat: 37.5663, lng: 126.9779 };
@@ -77,6 +79,35 @@ describe("cumulativeDistances", () => {
     const cum = cumulativeDistances([SEOUL, DAEJEON, { lat: 35.1, lng: 129.0 }]);
     expect(cum[0]).toBe(0);
     expect(cum[1]).toBeLessThan(cum[2]);
+  });
+});
+
+describe("slicePolylineByDistance", () => {
+  it("중간 구간만 남긴다", () => {
+    const line = [
+      { lat: 36, lng: 127 },
+      { lat: 37, lng: 127 },
+    ];
+    const total = polylineLengthM(line);
+    const mid = slicePolylineByDistance(line, total / 4, (total * 3) / 4);
+    expect(mid[0].lat).toBeCloseTo(36.25, 2);
+    expect(mid[mid.length - 1].lat).toBeCloseTo(36.75, 2);
+  });
+});
+
+describe("viaRoutePolyline", () => {
+  it("본선보다 길고 주유소를 지난다", () => {
+    const line = [
+      { lat: 36, lng: 127 },
+      { lat: 37, lng: 127 },
+    ];
+    const station = { lat: 36.5, lng: 127.05 };
+    const join = { lat: 36.5, lng: 127 };
+    const via = viaRoutePolyline(line, station, join, polylineLengthM(line) / 2);
+    expect(via.length).toBeGreaterThan(line.length);
+    expect(via.some((p) => Math.abs(p.lng - 127.05) < 0.01)).toBe(true);
+    expect(via[0].lat).toBeCloseTo(36, 3);
+    expect(via[via.length - 1].lat).toBeCloseTo(37, 3);
   });
 });
 
