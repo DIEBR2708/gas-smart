@@ -13,7 +13,7 @@ import {
   projectOntoPolyline,
   type Projection,
 } from "./geo";
-import { displayStationName } from "@/lib/format";
+import { stationHeading } from "@/lib/format";
 import { planItinerary } from "./itinerary";
 import { congestionFactorAt } from "./traffic";
 import type {
@@ -477,7 +477,9 @@ function decide(args: {
 
   if (itineraryCount >= 2) {
     const names = itinerary
-      .map((stop) => displayStationName(stop.option.station.name))
+      .map((stop) =>
+        stationHeading(stop.option.station.name, stop.option.station.brand),
+      )
       .join(" → ");
     return {
       verdict: "multi-stop",
@@ -504,7 +506,7 @@ function decide(args: {
   if (best.station.id === baseline.station.id) {
     return {
       verdict: "stay-on-route",
-      headline: `경로에서 가장 가까운 ${displayStationName(best.station.name)}가 이미 최선입니다. 더 싼 곳을 찾아 우회할 이유가 없습니다.`,
+      headline: `경로에서 가장 가까운 ${stationHeading(best.station.name, best.station.brand)}가 이미 최선입니다. 더 싼 곳을 찾아 우회할 이유가 없습니다.`,
     };
   }
 
@@ -514,7 +516,7 @@ function decide(args: {
   ) {
     return {
       verdict: "marginal",
-      headline: `${displayStationName(best.station.name)}가 계산상 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 저렴하지만, 연비·가격 오차를 감안하면 이득이 사라질 수 있습니다. 가까운 곳에서 넣는 편이 안전합니다.`,
+      headline: `${stationHeading(best.station.name, best.station.brand)}가 계산상 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 저렴하지만, 연비·가격 오차를 감안하면 이득이 사라질 수 있습니다. 가까운 곳에서 넣는 편이 안전합니다.`,
     };
   }
 
@@ -525,6 +527,6 @@ function decide(args: {
 
   return {
     verdict: "detour-worth-it",
-    headline: `${displayStationName(best.station.name)}로 ${(best.detour.extraDistanceM / 1000).toFixed(1)}km 우회하면 우회 연료비와 시간까지 계산해도 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 절약됩니다.${stockUpNote}`,
+    headline: `${stationHeading(best.station.name, best.station.brand)}로 ${(best.detour.extraDistanceM / 1000).toFixed(1)}km 우회하면 우회 연료비와 시간까지 계산해도 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 절약됩니다.${stockUpNote}`,
   };
 }

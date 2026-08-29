@@ -18,11 +18,11 @@ import { CostBreakdown } from "@/components/cost-breakdown";
 import { FuelTimeline } from "@/components/fuel-timeline";
 import { isUnreachableByCarMessage } from "@/lib/domain/driving-region";
 import type { ReportKind, RefuelPlan, StationReport, Verdict } from "@/lib/domain/types";
-import { BRAND_LABEL } from "@/lib/domain/types";
+import { StationName } from "@/components/station-name";
 import {
   cashCostKrw,
-  displayStationName,
   km,
+  stationHeading,
   krw,
   liters,
   perLiter,
@@ -244,7 +244,10 @@ export function ResultPanel({
                   href={kakaoMapMultiStopUrl([
                     plan.route.origin,
                     ...plan.itinerary.map((stop) => ({
-                      name: displayStationName(stop.option.station.name),
+                      name: stationHeading(
+                        stop.option.station.name,
+                        stop.option.station.brand,
+                      ),
                       lat: stop.option.station.lat,
                       lng: stop.option.station.lng,
                     })),
@@ -270,9 +273,11 @@ export function ResultPanel({
                     {index + 1}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm">
-                      {displayStationName(stop.option.station.name)}
-                    </span>
+                    <StationName
+                      name={stop.option.station.name}
+                      brand={stop.option.station.brand}
+                      className="text-sm"
+                    />
                     <span className="text-[11px] text-muted-foreground">
                       {FILL_REASON[stop.fillReason]} · {liters(stop.litersToBuy)} ·{" "}
                       {krw(stop.outOfPocketKrw)}
@@ -364,9 +369,11 @@ export function ResultPanel({
                           >
                             {option.rank}
                           </span>
-                          <span className="truncate text-sm">
-                            {displayStationName(option.station.name)}
-                          </span>
+                          <StationName
+                            name={option.station.name}
+                            brand={option.station.brand}
+                            className="text-sm"
+                          />
                         </span>
                         <span className="shrink-0 text-right">
                           <span className="block font-mono text-sm tabular-nums">
@@ -383,11 +390,12 @@ export function ResultPanel({
                         </span>
                         <span>·</span>
                         <span>우회 {km(option.detour.extraDistanceM)}</span>
-                        <span>·</span>
-                        <span className="truncate">
-                          {BRAND_LABEL[option.station.brand]}
-                          {option.station.isSelfService && " 셀프"}
-                        </span>
+                        {option.station.isSelfService && (
+                          <>
+                            <span>·</span>
+                            <span>셀프</span>
+                          </>
+                        )}
                         {option.warnings.some((w) => w.severity === "warn") && (
                           <TriangleAlert className="size-3 shrink-0 text-amber-400" />
                         )}
@@ -411,7 +419,10 @@ export function ResultPanel({
               {onReport && (
                 <ReportActions
                   stationId={selected.station.id}
-                  stationName={displayStationName(selected.station.name)}
+                  stationName={stationHeading(
+                    selected.station.name,
+                    selected.station.brand,
+                  )}
                   reports={reports}
                   onReport={onReport}
                 />
@@ -447,7 +458,7 @@ function SearchScope({ plan }: { plan: RefuelPlan }) {
   const grouped = new Map<string, string[]>();
   for (const item of plan.excluded) {
     const list = grouped.get(item.reason) ?? [];
-    list.push(displayStationName(item.station.name));
+    list.push(stationHeading(item.station.name, item.station.brand));
     grouped.set(item.reason, list);
   }
   const reasons = [...grouped.entries()].sort((a, b) => b[1].length - a[1].length);

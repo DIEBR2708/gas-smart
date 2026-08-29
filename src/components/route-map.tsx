@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { LatLng, RankedOption, Route } from "@/lib/domain/types";
-import { displayStationName, krw, perLiter } from "@/lib/format";
+import { stationHeading, stationTradeName, krw, perLiter } from "@/lib/format";
+import { BRAND_LABEL } from "@/lib/domain/types";
 
 /**
  * 경로와 주유소 후보를 지도에 그린다.
@@ -80,7 +81,7 @@ function popupHtml(option: RankedOption): string {
       : `<span style="color:#f87171">${krw(-option.savingKrw)} 손해</span>`;
   return `
     <div style="min-width:190px">
-      <div style="font-weight:600;margin-bottom:4px">${displayStationName(option.station.name)}</div>
+      <div style="font-weight:600;margin-bottom:2px">${BRAND_LABEL[option.station.brand]} <span style="font-weight:400;font-size:11px;color:#94a3b8">${stationTradeName(option.station.name, option.station.brand)}</span></div>
       <div style="color:#94a3b8">${perLiter(option.listPriceKrwPerL)} · 할인 후 ${perLiter(option.effectivePriceKrwPerL)}</div>
       <div style="color:#94a3b8">우회 ${detourKm}km</div>
       <div style="margin-top:6px">기준선 대비 ${saving}</div>
@@ -306,7 +307,7 @@ export default function RouteMap({
       const marker = L.marker([option.station.lat, option.station.lng], {
         icon,
         zIndexOffset,
-        title: displayStationName(option.station.name),
+        title: stationHeading(option.station.name, option.station.brand),
       })
         .addTo(stationLayer)
         .bindPopup(popupHtml(option), { closeButton: false });

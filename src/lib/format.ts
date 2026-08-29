@@ -1,3 +1,5 @@
+import { BRAND_LABEL, type Brand } from "./domain/types";
+
 const KRW = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
 
 export function krw(value: number): string {
@@ -48,6 +50,47 @@ export function displayStationName(name: string): string {
     .replace(/\s{2,}/g, " ")
     .replace(/^[\s\-_/.,]+|[\s\-_/.,]+$/g, "")
     .trim();
+}
+
+const BRAND_PREFIXES = [
+  ...Object.values(BRAND_LABEL),
+  "SK에너지",
+  "SK",
+  "GS칼텍스",
+  "GS",
+  "현대오일뱅크",
+  "현대오일",
+  "S-OIL",
+  "S오일",
+  "자영알뜰",
+  "고속도로알뜰",
+  "농협알뜰",
+  "알뜰",
+  "자가상표",
+].sort((a, b) => b.length - a.length);
+
+/**
+ * 브랜드 옆에 작게 붙일 상호.
+ * 상표명과 끝의 '주유소'는 빼서 GS칼텍스 + 아크로셀프 처럼 보이게 한다.
+ */
+export function stationTradeName(name: string, brand?: Brand): string {
+  let trade = displayStationName(name);
+  const extra = brand ? [BRAND_LABEL[brand]] : [];
+  for (const prefix of [...extra, ...BRAND_PREFIXES]) {
+    const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    trade = trade.replace(new RegExp(`^${escaped}\\s*`, "i"), "").trim();
+  }
+  trade = trade.replace(/\s*주유소$/u, "").trim();
+  trade = trade.replace(/\s*충전소$/u, "").trim();
+  return trade;
+}
+
+/** 문장용: "GS칼텍스 아크로셀프" */
+export function stationHeading(name: string, brand: Brand): string {
+  const brandLabel = BRAND_LABEL[brand];
+  const trade = stationTradeName(name, brand);
+  if (!trade || trade === brandLabel) return brandLabel;
+  return `${brandLabel} ${trade}`;
 }
 
 /** 시간 기회비용을 뺀 실제 지출. 순위는 시간을 포함한 값으로 매긴다. */

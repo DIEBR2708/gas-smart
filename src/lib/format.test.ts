@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { cashCostKrw, displayStationName, signedMinutes } from "./format";
+import {
+  cashCostKrw,
+  displayStationName,
+  signedMinutes,
+  stationHeading,
+  stationTradeName,
+} from "./format";
 
 describe("displayStationName", () => {
   it("(주)와 주식회사를 뺀다", () => {
@@ -16,6 +22,16 @@ describe("signedMinutes", () => {
     expect(signedMinutes(300)).toBe("+5분");
     expect(signedMinutes(0)).toBe("+0분");
     expect(signedMinutes(-120)).toBe("-2분");
+  });
+});
+
+describe("stationTradeName", () => {
+  it("브랜드를 앞에 두고 상호만 남긴다", () => {
+    expect(stationTradeName("아크로셀프 주유소", "GSC")).toBe("아크로셀프");
+    expect(stationTradeName("(주)GS칼텍스 아크로셀프주유소", "GSC")).toBe(
+      "아크로셀프",
+    );
+    expect(stationHeading("아크로셀프 주유소", "GSC")).toBe("GS칼텍스 아크로셀프");
   });
 });
 

@@ -5,11 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type { RankedOption, Route } from "@/lib/domain/types";
-import { BRAND_LABEL } from "@/lib/domain/types";
+import { StationName } from "@/components/station-name";
 import {
   cashCostKrw,
-  displayStationName,
   km,
+  stationHeading,
   krw,
   liters,
   minutes,
@@ -75,7 +75,7 @@ export function CostBreakdown({
   const naviTarget = {
     lat: station.lat,
     lng: station.lng,
-    name: displayStationName(station.name),
+    name: stationHeading(station.name, station.brand),
   };
 
   return (
@@ -84,16 +84,23 @@ export function CostBreakdown({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="truncate text-base font-semibold">
-              {displayStationName(station.name)}
+              <StationName
+                name={station.name}
+                brand={station.brand}
+                className="text-base"
+                tradeClassName="text-sm"
+              />
             </h3>
             <p className="text-xs text-muted-foreground">
-              {BRAND_LABEL[station.brand]}
-              {station.isSelfService && " · 셀프"}
-              {station.openingHours.allDay
-                ? " · 24시간"
-                : ` · ${station.openingHours.open}~${station.openingHours.close}`}
-              {" · "}
-              {relativeTime(station.priceUpdatedAt)}
+              {[
+                station.isSelfService ? "셀프" : null,
+                station.openingHours.allDay
+                  ? "24시간"
+                  : `${station.openingHours.open}~${station.openingHours.close}`,
+                relativeTime(station.priceUpdatedAt),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </p>
           </div>
           <Badge variant={isBaseline ? "secondary" : "default"}>
@@ -168,7 +175,7 @@ export function CostBreakdown({
         <div className="space-y-2 rounded-lg border border-border bg-input/15 p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground">
-              기준선({displayStationName(baseline.station.name)}) 대비
+              기준선({stationHeading(baseline.station.name, baseline.station.brand)}) 대비
             </span>
             <span
               className={cn(
