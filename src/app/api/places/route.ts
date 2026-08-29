@@ -14,11 +14,13 @@ import type { NamedPlace } from "@/lib/domain/types";
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const query = url.searchParams.get("q")?.trim() ?? "";
-  const lat = Number(url.searchParams.get("lat"));
-  const lng = Number(url.searchParams.get("lng"));
+  const latRaw = url.searchParams.get("lat");
+  const lngRaw = url.searchParams.get("lng");
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
   const kakaoKey = process.env.KAKAO_REST_API_KEY?.trim();
 
-  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+  if (latRaw && lngRaw && Number.isFinite(lat) && Number.isFinite(lng)) {
     let place: NamedPlace = { name: "현재 위치", lat, lng };
     if (kakaoKey) {
       place = (await reverseGeocodeKakao(kakaoKey, lat, lng)) ?? place;

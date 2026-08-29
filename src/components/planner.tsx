@@ -1,7 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { FlaskConical, Loader2, Map as MapIcon, SlidersHorizontal } from "lucide-react";
 import { ResultPanel } from "@/components/result-panel";
 import { SettingsPanel } from "@/components/settings-panel";
@@ -226,6 +233,10 @@ function PlannerReady({ routes }: Props) {
 
   const plan = data?.plan ?? null;
   const isSample = data?.dataMode !== "live";
+  const itineraryIds = useMemo(
+    () => plan?.itinerary.map((stop) => stop.option.station.id) ?? [],
+    [plan],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -282,7 +293,7 @@ function PlannerReady({ routes }: Props) {
             shapes={data?.shapes ?? {}}
             selectedId={selectedId}
             bestId={plan?.best?.station.id ?? null}
-            itineraryIds={plan?.itinerary.map((stop) => stop.option.station.id) ?? []}
+            itineraryIds={itineraryIds}
             onSelect={handleSelect}
           />
           <div className="pointer-events-none absolute top-3 right-3 z-[500] hidden flex-col gap-1 rounded-lg border border-border bg-background/85 px-2.5 py-2 text-[11px] backdrop-blur sm:flex">
