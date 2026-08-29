@@ -6,7 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type { RankedOption, Route } from "@/lib/domain/types";
 import { BRAND_LABEL } from "@/lib/domain/types";
-import { km, krw, liters, minutes, perLiter, relativeTime, signedKrw } from "@/lib/format";
+import {
+  cashCostKrw,
+  displayStationName,
+  km,
+  krw,
+  liters,
+  minutes,
+  perLiter,
+  relativeTime,
+  signedKrw,
+  signedMinutes,
+} from "@/lib/format";
 import { kakaoMapRouteUrl, kakaoNaviDeepLink } from "@/lib/navi-links";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +26,6 @@ interface Props {
   baseline: RankedOption | null;
   route: Route;
   referencePriceKrwPerL: number;
-  timeValueKrwPerMin: number;
 }
 
 function Row({
@@ -57,7 +67,6 @@ export function CostBreakdown({
   baseline,
   route,
   referencePriceKrwPerL,
-  timeValueKrwPerMin,
 }: Props) {
   const station = option.station;
   const isBaseline = baseline?.station.id === station.id;
@@ -66,7 +75,7 @@ export function CostBreakdown({
   const naviTarget = {
     lat: station.lat,
     lng: station.lng,
-    name: station.name,
+    name: displayStationName(station.name),
   };
 
   return (
@@ -74,7 +83,9 @@ export function CostBreakdown({
       <div className="space-y-2">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="truncate text-base font-semibold">{station.name}</h3>
+            <h3 className="truncate text-base font-semibold">
+              {displayStationName(station.name)}
+            </h3>
             <p className="text-xs text-muted-foreground">
               {BRAND_LABEL[station.brand]}
               {station.isSelfService && " · 셀프"}
@@ -119,9 +130,9 @@ export function CostBreakdown({
           value={krw(option.outOfPocketKrw)}
         />
         <Row
-          label="우회 시간의 기회비용"
-          detail={`${minutes(option.detour.extraDurationS)} × ${timeValueKrwPerMin}원/분`}
-          value={krw(option.timeCostKrw)}
+          label="우회 시간"
+          detail="순위 계산에만 반영하고, 아래 지출에는 넣지 않습니다"
+          value={signedMinutes(option.detour.extraDurationS)}
         />
         {option.tollDeltaKrw !== 0 && (
           <Row
@@ -146,9 +157,9 @@ export function CostBreakdown({
           />
         )}
         <Row
-          label="실질 총비용"
-          detail={`이번 여행에 실제로 쓰이는 연료 1L당 ${perLiter(option.krwPerUsefulLiter)}`}
-          value={krw(option.normalizedCostKrw)}
+          label="실제 지출"
+          detail={`주유·통행료·부족분에서 남는 연료 가치를 뺀 금액. 1L당 ${perLiter(option.krwPerUsefulLiter)}`}
+          value={krw(cashCostKrw(option))}
           emphasis
         />
       </div>
@@ -157,7 +168,7 @@ export function CostBreakdown({
         <div className="space-y-2 rounded-lg border border-border bg-input/15 p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground">
-              기준선({baseline.station.name}) 대비
+              기준선({displayStationName(baseline.station.name)}) 대비
             </span>
             <span
               className={cn(
@@ -165,7 +176,7 @@ export function CostBreakdown({
                 option.savingKrw >= 0 ? "text-emerald-400" : "text-red-400",
               )}
             >
-              {signedKrw(option.savingKrw)}
+              {signedKrw(cashCostKrw(baseline) - cashCostKrw(option))}
             </span>
           </div>
           <div className="flex items-center justify-between gap-2">

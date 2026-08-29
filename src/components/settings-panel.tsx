@@ -33,6 +33,7 @@ import type {
   Vehicle,
 } from "@/lib/domain/types";
 import { BRAND_LABEL, FUEL_KIND_LABEL } from "@/lib/domain/types";
+import { TIME_PACE, TIME_PACE_ORDER, timePaceFromKrw } from "@/lib/domain/time-pace";
 import { fromSeoulInputValue, krw, liters, toSeoulInputValue } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -79,6 +80,7 @@ interface Props {
   onVehicleChange: (patch: Partial<Vehicle>) => void;
   onPreferencesChange: (patch: Partial<Preferences>) => void;
   onFillsChange: (records: FillRecord[]) => void;
+  onUserLocation?: (lat: number, lng: number) => void;
 }
 
 function SectionTitle({
@@ -207,6 +209,7 @@ export function SettingsPanel({
   onVehicleChange,
   onPreferencesChange,
   onFillsChange,
+  onUserLocation,
 }: Props) {
   const tankPercent = Math.round(
     (vehicle.currentFuelL / vehicle.tankCapacityL) * 100,
@@ -222,6 +225,7 @@ export function SettingsPanel({
           value={origin}
           onChange={onOriginChange}
           allowGeolocation
+          onLocated={onUserLocation}
         />
         <PlaceSearch
           id="destination"
@@ -229,6 +233,7 @@ export function SettingsPanel({
           value={destination}
           onChange={onDestinationChange}
           allowGeolocation
+          onLocated={onUserLocation}
         />
         <p className="text-[11px] leading-relaxed text-muted-foreground">
           지명·도로명으로 검색하거나 현재 위치를 쓰세요. 미리보기에서 위치가
@@ -500,19 +505,40 @@ export function SettingsPanel({
         <SectionTitle icon={SlidersHorizontal}>우회 허용치와 판단 기준</SectionTitle>
 
         <Field
-          label="시간의 가치"
-          value={`${preferences.timeValueKrwPerMin}원/분`}
-          hint="우회로 늘어난 시간을 돈으로 환산하는 계수입니다. 0으로 두면 시간을 공짜로 보고, 값이 커지면 우회 추천이 줄어듭니다."
+          label="시간 여유"
+          value={TIME_PACE[timePaceFromKrw(preferences.timeValueKrwPerMin)].label}
+          hint="순위를 매길 때만 우회 시간을 돈으로 환산합니다. 목록에 보이는 금액은 실제로 쓰는 돈이고, 시간은 그 아래 +5분처럼 따로 적습니다."
         >
-          <Slider
-            value={[preferences.timeValueKrwPerMin]}
-            min={0}
-            max={800}
-            step={10}
-            onValueChange={(value) =>
-              onPreferencesChange({ timeValueKrwPerMin: num(value) })
-            }
-          />
+          <div className="grid grid-cols-3 gap-1.5">
+            {TIME_PACE_ORDER.map((pace) => {
+              const meta = TIME_PACE[pace];
+              const active = timePaceFromKrw(preferences.timeValueKrwPerMin) === pace;
+              return (
+                <button
+                  key={pace}
+                  type="button"
+                  onClick={() =>
+                    onPreferencesChange({ timeValueKrwPerMin: meta.krwPerMin })
+                  }
+                  className={cn(
+                    "rounded-lg border px-2 py-2 text-xs transition-colors",
+                    active
+                      ? "border-primary/70 bg-primary/15 text-primary"
+                      : "border-border bg-input/20 text-muted-foreground hover:bg-input/40 hover:text-foreground",
+                  )}
+                >
+                  <span className="block font-medium">{meta.label}</span>
+                  <span className="mt-0.5 block text-[10px] leading-snug opacity-80">
+                    {pace === "rushed"
+                      ? "가까운 곳 우선"
+                      : pace === "relaxed"
+                        ? "싼 곳 우선"
+                        : "균형"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </Field>
 
         <div className="grid grid-cols-2 gap-4">

@@ -29,6 +29,35 @@ export function minutes(seconds: number): string {
   return `${Math.floor(m / 60)}시간 ${m % 60}분`;
 }
 
+/** 우회 시간. 목록에서 금액 아래에 +5분처럼 적는다. */
+export function signedMinutes(seconds: number): string {
+  const m = Math.round(seconds / 60);
+  if (m === 0) return "+0분";
+  return `${m > 0 ? "+" : ""}${m}분`;
+}
+
+/**
+ * 주유소 상호에서 (주)·㈜·주식회사를 뺀다.
+ * 오피넷 신고명에 법인식이 붙어 목록이 지저분해지는 것을 막는다.
+ */
+export function displayStationName(name: string): string {
+  return name
+    .replace(/주식회사/g, "")
+    .replace(/㈜/g, "")
+    .replace(/\(\s*주\s*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s\-_/.,]+|[\s\-_/.,]+$/g, "")
+    .trim();
+}
+
+/** 시간 기회비용을 뺀 실제 지출. 순위는 시간을 포함한 값으로 매긴다. */
+export function cashCostKrw(option: {
+  normalizedCostKrw: number;
+  timeCostKrw: number;
+}): number {
+  return option.normalizedCostKrw - option.timeCostKrw;
+}
+
 export function relativeTime(iso: string, now = new Date()): string {
   const diffMs = now.getTime() - new Date(iso).getTime();
   if (!Number.isFinite(diffMs)) return "시각 미상";

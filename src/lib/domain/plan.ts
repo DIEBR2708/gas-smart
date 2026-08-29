@@ -13,6 +13,7 @@ import {
   projectOntoPolyline,
   type Projection,
 } from "./geo";
+import { displayStationName } from "@/lib/format";
 import { planItinerary } from "./itinerary";
 import { congestionFactorAt } from "./traffic";
 import type {
@@ -475,7 +476,9 @@ function decide(args: {
   } = args;
 
   if (itineraryCount >= 2) {
-    const names = itinerary.map((stop) => stop.option.station.name).join(" → ");
+    const names = itinerary
+      .map((stop) => displayStationName(stop.option.station.name))
+      .join(" → ");
     return {
       verdict: "multi-stop",
       headline: `탱크 용량만으로는 한 번에 목적지 예비량을 채울 수 없습니다. ${itineraryCount}곳(${names}) 순서로 나눠 넣으면 중간에 서지 않고 도착할 수 있습니다.`,
@@ -501,7 +504,7 @@ function decide(args: {
   if (best.station.id === baseline.station.id) {
     return {
       verdict: "stay-on-route",
-      headline: `경로에서 가장 가까운 ${best.station.name}가 이미 최선입니다. 더 싼 곳을 찾아 우회할 이유가 없습니다.`,
+      headline: `경로에서 가장 가까운 ${displayStationName(best.station.name)}가 이미 최선입니다. 더 싼 곳을 찾아 우회할 이유가 없습니다.`,
     };
   }
 
@@ -511,7 +514,7 @@ function decide(args: {
   ) {
     return {
       verdict: "marginal",
-      headline: `${best.station.name}가 계산상 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 저렴하지만, 연비·가격 오차를 감안하면 이득이 사라질 수 있습니다. 가까운 곳에서 넣는 편이 안전합니다.`,
+      headline: `${displayStationName(best.station.name)}가 계산상 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 저렴하지만, 연비·가격 오차를 감안하면 이득이 사라질 수 있습니다. 가까운 곳에서 넣는 편이 안전합니다.`,
     };
   }
 
@@ -522,6 +525,6 @@ function decide(args: {
 
   return {
     verdict: "detour-worth-it",
-    headline: `${best.station.name}로 ${(best.detour.extraDistanceM / 1000).toFixed(1)}km 우회하면 우회 연료비와 시간까지 계산해도 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 절약됩니다.${stockUpNote}`,
+    headline: `${displayStationName(best.station.name)}로 ${(best.detour.extraDistanceM / 1000).toFixed(1)}km 우회하면 우회 연료비와 시간까지 계산해도 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 절약됩니다.${stockUpNote}`,
   };
 }

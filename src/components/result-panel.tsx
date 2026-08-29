@@ -19,7 +19,15 @@ import { FuelTimeline } from "@/components/fuel-timeline";
 import { isUnreachableByCarMessage } from "@/lib/domain/driving-region";
 import type { ReportKind, RefuelPlan, StationReport, Verdict } from "@/lib/domain/types";
 import { BRAND_LABEL } from "@/lib/domain/types";
-import { km, krw, liters, perLiter, signedKrw } from "@/lib/format";
+import {
+  cashCostKrw,
+  displayStationName,
+  km,
+  krw,
+  liters,
+  perLiter,
+  signedMinutes,
+} from "@/lib/format";
 import { kakaoMapMultiStopUrl } from "@/lib/navi-links";
 import { cn } from "@/lib/utils";
 
@@ -207,12 +215,17 @@ export function ResultPanel({
         </p>
         {plan.best &&
           (plan.verdict === "detour-worth-it" || plan.verdict === "multi-stop") && (
-          <div className="mt-3 flex items-end gap-2">
-            <span className="font-mono text-3xl leading-none font-semibold text-emerald-300">
-              {krw(plan.best.savingKrw)}
-            </span>
+          <div className="mt-3 flex items-end gap-3">
+            <div>
+              <span className="font-mono text-3xl leading-none font-semibold text-emerald-300">
+                {krw(cashCostKrw(plan.best))}
+              </span>
+              <div className="mt-1 font-mono text-sm text-foreground/80">
+                {signedMinutes(plan.best.detour.extraDurationS)}
+              </div>
+            </div>
             <span className="pb-0.5 text-xs text-muted-foreground">
-              절약 (최악의 경우 {signedKrw(plan.best.savingPessimisticKrw)})
+              실제 지출 · 순위는 시간 여유를 반영한 순서
             </span>
           </div>
         )}
@@ -231,7 +244,7 @@ export function ResultPanel({
                   href={kakaoMapMultiStopUrl([
                     plan.route.origin,
                     ...plan.itinerary.map((stop) => ({
-                      name: stop.option.station.name,
+                      name: displayStationName(stop.option.station.name),
                       lat: stop.option.station.lat,
                       lng: stop.option.station.lng,
                     })),
@@ -258,7 +271,7 @@ export function ResultPanel({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm">
-                      {stop.option.station.name}
+                      {displayStationName(stop.option.station.name)}
                     </span>
                     <span className="text-[11px] text-muted-foreground">
                       {FILL_REASON[stop.fillReason]} · {liters(stop.litersToBuy)} ·{" "}
@@ -320,15 +333,13 @@ export function ResultPanel({
             <div className="flex items-baseline justify-between">
               <h2 className="text-sm font-semibold">후보 비교</h2>
               <span className="text-[11px] text-muted-foreground">
-                실질 총비용 기준 정렬
+                순위는 시간 포함 · 금액은 실제 지출
               </span>
             </div>
             <ul className="space-y-1.5">
               {plan.options.map((option) => {
                 const active = option.station.id === selected?.station.id;
                 const isBest = option.station.id === plan.best?.station.id;
-                const isBaseline =
-                  option.station.id === plan.baseline?.station.id;
                 return (
                   <li key={option.station.id}>
                     <button
@@ -354,20 +365,16 @@ export function ResultPanel({
                             {option.rank}
                           </span>
                           <span className="truncate text-sm">
-                            {option.station.name}
+                            {displayStationName(option.station.name)}
                           </span>
                         </span>
-                        <span
-                          className={cn(
-                            "shrink-0 font-mono text-sm tabular-nums",
-                            option.savingKrw > 0
-                              ? "text-emerald-400"
-                              : option.savingKrw < 0
-                                ? "text-red-400"
-                                : "text-muted-foreground",
-                          )}
-                        >
-                          {isBaseline ? "기준" : signedKrw(option.savingKrw)}
+                        <span className="shrink-0 text-right">
+                          <span className="block font-mono text-sm tabular-nums">
+                            {krw(cashCostKrw(option))}
+                          </span>
+                          <span className="block font-mono text-[11px] text-muted-foreground">
+                            {signedMinutes(option.detour.extraDurationS)}
+                          </span>
                         </span>
                       </div>
                       <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -400,12 +407,11 @@ export function ResultPanel({
                 baseline={plan.baseline}
                 route={plan.route}
                 referencePriceKrwPerL={plan.referencePriceKrwPerL}
-                timeValueKrwPerMin={plan.preferences.timeValueKrwPerMin}
               />
               {onReport && (
                 <ReportActions
                   stationId={selected.station.id}
-                  stationName={selected.station.name}
+                  stationName={displayStationName(selected.station.name)}
                   reports={reports}
                   onReport={onReport}
                 />
@@ -441,7 +447,7 @@ function SearchScope({ plan }: { plan: RefuelPlan }) {
   const grouped = new Map<string, string[]>();
   for (const item of plan.excluded) {
     const list = grouped.get(item.reason) ?? [];
-    list.push(item.station.name);
+    list.push(displayStationName(item.station.name));
     grouped.set(item.reason, list);
   }
   const reasons = [...grouped.entries()].sort((a, b) => b[1].length - a[1].length);

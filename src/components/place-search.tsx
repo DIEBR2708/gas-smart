@@ -18,6 +18,7 @@ interface Props {
   allowGeolocation?: boolean;
   onRequestMapPick?: () => void;
   mapPickActive?: boolean;
+  onLocated?: (lat: number, lng: number) => void;
 }
 
 export function PlaceSearch({
@@ -28,6 +29,7 @@ export function PlaceSearch({
   allowGeolocation,
   onRequestMapPick,
   mapPickActive,
+  onLocated,
 }: Props) {
   const [query, setQuery] = useState(value?.name ?? "");
   const [hits, setHits] = useState<NamedPlace[]>([]);
@@ -119,6 +121,7 @@ export function PlaceSearch({
   };
 
   const applyCoords = async (lat: number, lng: number) => {
+    onLocated?.(lat, lng);
     try {
       const place = await reverseGeocodePlace(lat, lng);
       pick(place ?? { name: "현재 위치", lat, lng });

@@ -33,6 +33,7 @@ import {
 import { DEFAULT_PREFERENCES, DEFAULT_VEHICLE } from "@/lib/domain/fixtures";
 import { disconnectedEndpointsRoute } from "@/lib/domain/route-build";
 import type {
+  LatLng,
   NamedPlace,
   Preferences,
   ReportKind,
@@ -98,8 +99,29 @@ export function Planner({ routes }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("result");
   const [mapPick, setMapPick] = useState<"origin" | "destination" | null>(null);
+  const [userLocation, setUserLocation] = useState<LatLng | null>(null);
 
   const requestSeq = useRef(0);
+
+  useEffect(() => {
+    if (!window.isSecureContext || !navigator.geolocation) return;
+    const onPos = (pos: GeolocationPosition) => {
+      setUserLocation({
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+      });
+    };
+    navigator.geolocation.getCurrentPosition(onPos, () => undefined, {
+      enableHighAccuracy: false,
+      timeout: 12_000,
+      maximumAge: 60_000,
+    });
+    const watch = navigator.geolocation.watchPosition(onPos, () => undefined, {
+      enableHighAccuracy: false,
+      maximumAge: 15_000,
+    });
+    return () => navigator.geolocation.clearWatch(watch);
+  }, []);
 
   useEffect(() => {
     saveSession({
@@ -316,6 +338,10 @@ export function Planner({ routes }: Props) {
             onSelect={handleSelect}
             pickEnabled={mapPick !== null}
             onPickPoint={(lat, lng) => void applyPickedPoint(lat, lng)}
+            userLocation={
+              userLocation ??
+              (origin?.name === "현재 위치" ? origin : null)
+            }
           />
           <div className="pointer-events-auto absolute top-3 left-3 z-[500] w-[min(calc(100%-1.5rem),20.5rem)] space-y-2 rounded-xl border border-border bg-background/92 p-3 shadow-lg backdrop-blur">
             <PlaceSearch
@@ -327,6 +353,7 @@ export function Planner({ routes }: Props) {
                 setMapPick(null);
               }}
               allowGeolocation
+              onLocated={(lat, lng) => setUserLocation({ lat, lng })}
               mapPickActive={mapPick === "origin"}
               onRequestMapPick={() =>
                 setMapPick((current) => (current === "origin" ? null : "origin"))
@@ -341,6 +368,7 @@ export function Planner({ routes }: Props) {
                 setMapPick(null);
               }}
               allowGeolocation
+              onLocated={(lat, lng) => setUserLocation({ lat, lng })}
               mapPickActive={mapPick === "destination"}
               onRequestMapPick={() =>
                 setMapPick((current) =>
@@ -413,6 +441,7 @@ export function Planner({ routes }: Props) {
                   setPreferences((current) => ({ ...current, ...patch }))
                 }
                 onFillsChange={setFills}
+                onUserLocation={(lat, lng) => setUserLocation({ lat, lng })}
               />
             )}
           </div>

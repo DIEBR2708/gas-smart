@@ -13,6 +13,7 @@ import type {
   Station,
 } from "@/lib/domain/types";
 import { OPINET_PROD_CODE } from "@/lib/domain/types";
+import { displayStationName } from "@/lib/format";
 import type { StationProvider, StationQuery } from "../types";
 
 /**
@@ -114,7 +115,7 @@ export class OpinetStationProvider implements StationProvider {
       if (!Number.isFinite(price) || price <= 0) continue;
       stations.push({
         id: row.UNI_ID,
-        name: row.OS_NM,
+        name: displayStationName(String(row.OS_NM ?? "")),
         brand: toBrand(String(row.POLL_DIV_CD ?? row.POLL_DIV_CO ?? "ETC")),
         // aroundAll 응답에 셀프 여부가 없어 상세 조회 전에는 알 수 없다.
         isSelfService: false,

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { LatLng, RankedOption, Route } from "@/lib/domain/types";
-import { krw, perLiter } from "@/lib/format";
+import { displayStationName, krw, perLiter } from "@/lib/format";
 
 /**
  * 경로와 주유소 후보를 지도에 그린다.
@@ -42,6 +42,7 @@ interface Props {
   onSelect: (stationId: string) => void;
   pickEnabled?: boolean;
   onPickPoint?: (lat: number, lng: number) => void;
+  userLocation?: LatLng | null;
 }
 
 function markerColor(option: RankedOption, bestId: string | null): string {
@@ -79,11 +80,28 @@ function popupHtml(option: RankedOption): string {
       : `<span style="color:#f87171">${krw(-option.savingKrw)} 손해</span>`;
   return `
     <div style="min-width:190px">
-      <div style="font-weight:600;margin-bottom:4px">${option.station.name}</div>
+      <div style="font-weight:600;margin-bottom:4px">${displayStationName(option.station.name)}</div>
       <div style="color:#94a3b8">${perLiter(option.listPriceKrwPerL)} · 할인 후 ${perLiter(option.effectivePriceKrwPerL)}</div>
       <div style="color:#94a3b8">우회 ${detourKm}km</div>
       <div style="margin-top:6px">기준선 대비 ${saving}</div>
     </div>`;
+}
+
+function userLocationMarker(point: LatLng) {
+  return L.marker([point.lat, point.lng], {
+    icon: L.divIcon({
+      className: "",
+      html: `<div class="user-location">
+        <span class="user-location-pulse"></span>
+        <span class="user-location-dot"></span>
+        <span class="user-location-label">현재 위치</span>
+      </div>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    }),
+    zIndexOffset: 2500,
+    interactive: false,
+  });
 }
 
 function endpointMarker(place: LatLng & { name: string }, fill: string) {
@@ -110,6 +128,7 @@ export default function RouteMap({
   onSelect,
   pickEnabled = false,
   onPickPoint,
+  userLocation = null,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -244,6 +263,9 @@ export default function RouteMap({
     }
     endpointMarker(route.origin, "#38bdf8").addTo(routeLayer);
     endpointMarker(route.destination, "#f472b6").addTo(routeLayer);
+    if (userLocation) {
+      userLocationMarker(userLocation).addTo(routeLayer);
+    }
 
     if (fittedRouteRef.current !== route.id) {
       const bounds = driveable
@@ -284,7 +306,7 @@ export default function RouteMap({
       const marker = L.marker([option.station.lat, option.station.lng], {
         icon,
         zIndexOffset,
-        title: option.station.name,
+        title: displayStationName(option.station.name),
       })
         .addTo(stationLayer)
         .bindPopup(popupHtml(option), { closeButton: false });
@@ -300,7 +322,7 @@ export default function RouteMap({
       marker.remove();
       markersRef.current.delete(stationId);
     }
-  }, [polyline, route, options, shapes, selectedId, bestId]);
+  }, [polyline, route, options, shapes, selectedId, bestId, userLocation]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }

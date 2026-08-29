@@ -202,6 +202,52 @@
     outline: 3px solid oklch(0.79 0.16 78 / 55%);
     transform: scale(1.18);
   }
+
+  .user-location {
+    position: relative;
+    width: 18px;
+    height: 18px;
+  }
+
+  .user-location-dot {
+    position: absolute;
+    inset: 3px;
+    border-radius: 9999px;
+    background: #38bdf8;
+    border: 2px solid #f8fafc;
+    box-shadow: 0 0 0 2px #0ea5e9aa;
+  }
+
+  .user-location-pulse {
+    position: absolute;
+    inset: -6px;
+    border-radius: 9999px;
+    background: #38bdf855;
+    animation: user-location-pulse 1.8s ease-out infinite;
+  }
+
+  .user-location-label {
+    position: absolute;
+    left: 22px;
+    top: -2px;
+    white-space: nowrap;
+    background: #131a2ecc;
+    color: #e2e8f0;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 6px;
+  }
+
+  @keyframes user-location-pulse {
+    0% {
+      transform: scale(0.7);
+      opacity: 0.7;
+    }
+    100% {
+      transform: scale(1.8);
+      opacity: 0;
+    }
+  }
 }
 
 /* 스크롤 영역이 카드 안에서 자연스럽게 끝나도록 */
