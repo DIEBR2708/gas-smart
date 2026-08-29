@@ -1,36 +1,93 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 경로 위에서 가장 싸게 주유하기
 
-## Getting Started
+내비게이션 경로를 따라가면서 **실제로 가장 저렴하게** 주유할 수 있는 곳을 찾는
+웹 앱입니다. 리터당 표시가격만 비교하지 않습니다. 우회 거리에 태우는 연료,
+늘어나는 시간, 통행료 증분, 탱크에 남는 연료의 가치까지 모두 원으로 환산해
+"여행을 끝내는 데 드는 실질 총비용"으로 후보를 줄세웁니다.
 
-First, run the development server:
+리터당 40원 싼 주유소가 3km 벗어나 있으면 대개 손해입니다. 이 앱은 그 사실을
+숫자로 보여주고, **우회할 가치가 없을 때는 우회하지 말라고 말합니다.**
+
+## 지금 할 수 있는 것
+
+- 샘플 경로(서울–대전 / 강남–인천공항 / 수원–강릉) 위의 주유소 후보를 실질
+  총비용 순으로 비교
+- 차량 설정(유종, 실주행 연비, 탱크 용량, 현재 연료량, 도착 시 예비량)
+- 주유 방식(필요한 만큼 / 가득 / 금액 지정 / 리터 지정)과 카드 할인 반영
+- 시간의 가치, 최대 우회 거리·시간, 브랜드·셀프 필터
+- 지도에서 경로, 후보 마커(절감 여부별 색), 선택한 후보의 우회 구간 확인
+- 비용 내역 분해와 **손익분기 우회거리** 확인
+- 연료 잔량 그래프로 예비선을 침범하지 않는지 확인
+- 카카오내비 딥링크로 안내 위임
+
+## 실행
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev     # http://localhost:43127
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+```bash
+npm test        # 비용 모델 단위 테스트
+npm run lint
+npm run typecheck
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## API 키
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**키 없이도 앱 전체가 동작합니다.** 키가 없으면 결정론적 샘플 데이터를 쓰고,
+계산 로직은 실데이터와 완전히 동일합니다.
 
-## Learn More
+실데이터로 바꾸려면 `.env.local`에 키를 넣습니다.
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+# 오피넷(한국석유공사) 유가정보 오픈 API 인증키
+# https://www.opinet.co.kr/user/custapi/custApiInfo.do
+OPINET_CERT_KEY=
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# 카카오 REST API 키 (카카오모빌리티 길찾기)
+# https://developers.kakao.com
+KAKAO_REST_API_KEY=
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+키는 서버에서만 읽습니다. 추천 계산이 `/api/plan`에 있는 이유입니다. 브라우저로
+내려보내면 그대로 도용됩니다.
 
-## Deploy on Vercel
+## 구조
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+src/
+  lib/domain/          비용 모델 (순수 함수, 프레임워크 의존 없음)
+    types.ts           도메인 타입
+    cost.ts            정규화 총비용, 손익분기, 도달 가능성
+    plan.ts            후보 선별, 프루닝, 랭킹, 판정
+    geo.ts             하버사인, 폴리라인 투영, 경로 샘플링
+  lib/providers/       데이터 소스 (인터페이스 + 어댑터)
+    mock/              샘플 데이터 (키 불필요)
+    opinet/            오피넷 유가 API (KATEC 좌표 변환 포함)
+    kakao/             카카오모빌리티 길찾기
+  app/api/plan/        서버 계산 엔드포인트
+  components/          지도와 화면
+docs/design.md         설계, 결정해야 할 사항, 위험 분석
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+비용 모델은 프레임워크에 의존하지 않는 순수 함수로 분리했습니다. 이 계산이
+틀리면 앱이 사용자를 손해 보게 만드는 도구가 되기 때문에, 화면보다 먼저
+테스트로 고정했습니다.
+
+자세한 설계 근거와 위험 분석은 [docs/design.md](docs/design.md)에 있습니다.
+
+## 알아두어야 할 한계
+
+- 샘플 모드의 우회 거리는 도로망이 아닌 **기하학적 추정치**입니다. 강이나
+  중앙분리대를 모르기 때문에 실제와 크게 다를 수 있고, 화면에도 그렇게 표시됩니다.
+  카카오 키를 넣으면 실제 경유지 길찾기로 계산합니다.
+- 유가는 주유소가 신고한 값이라 현장 가격과 다를 수 있습니다.
+- 현재는 **단일 주유 최적화**입니다. 탱크 하나로 갈 수 없는 장거리의 다회 주유
+  최적화(Gas Station Problem)는 구현되어 있지 않고, 부족분을 경고로 알립니다.
+- 전기차·LPG·화물차는 비용 구조가 달라 이 모델을 그대로 쓰면 틀린 답이 나옵니다.
+
+## 안전
+
+이 앱은 직접 길안내를 하지 않습니다. 주유소 선택은 출발 전에 끝내고 실제 안내는
+검증된 내비 앱에 넘깁니다. 주행 중에는 화면을 조작하지 마세요.
