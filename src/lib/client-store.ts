@@ -78,6 +78,7 @@ export function saveReports(reports: StationReport[]) {
 }
 
 export function cachePlan(response: PlanResponse) {
+  if ((response.plan?.options.length ?? 0) === 0) return;
   writeJson(KEYS.lastPlan, { savedAt: new Date().toISOString(), response });
 }
 

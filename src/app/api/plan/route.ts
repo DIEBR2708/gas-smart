@@ -17,7 +17,7 @@ import type {
   StationReport,
   Vehicle,
 } from "@/lib/domain/types";
-import { resolveProviders } from "@/lib/providers";
+import { resolveProviders, stationsUsedSampleFallback } from "@/lib/providers";
 
 /**
  * 추천 계산은 서버에서 한다.
@@ -225,7 +225,12 @@ export async function POST(request: Request) {
   }
 
   const cached = planResponseCache.get(cacheKey);
-  if (cached && Date.now() - cached.at < PLAN_CACHE_TTL_MS) {
+  const cachedPlan = cached?.payload as { plan?: { options?: unknown[] } } | undefined;
+  if (
+    cached &&
+    Date.now() - cached.at < PLAN_CACHE_TTL_MS &&
+    (cachedPlan?.plan?.options?.length ?? 0) > 0
+  ) {
     return NextResponse.json(cached.payload);
   }
 
@@ -277,15 +282,20 @@ export async function POST(request: Request) {
     const payload = {
       plan,
       shapes,
-      dataMode: providers.anyLive ? "live" : "sample",
+      dataMode:
+        stationsUsedSampleFallback(providers.stations) || !providers.anyLive
+          ? "sample"
+          : "live",
     };
-    if (planResponseCache.size > 80) {
-      const now = Date.now();
-      for (const [key, entry] of planResponseCache) {
-        if (now - entry.at >= PLAN_CACHE_TTL_MS) planResponseCache.delete(key);
+    if (plan.options.length > 0) {
+      if (planResponseCache.size > 80) {
+        const now = Date.now();
+        for (const [key, entry] of planResponseCache) {
+          if (now - entry.at >= PLAN_CACHE_TTL_MS) planResponseCache.delete(key);
+        }
       }
+      planResponseCache.set(cacheKey, { at: Date.now(), payload });
     }
-    planResponseCache.set(cacheKey, { at: Date.now(), payload });
     return NextResponse.json(payload);
   } catch (error) {
     const message =

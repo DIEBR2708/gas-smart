@@ -19,6 +19,32 @@ export interface ProviderSet {
   anyLive: boolean;
 }
 
+class LiveStationsWithSampleFallback implements StationProvider {
+  readonly id: string;
+  readonly label: string;
+  readonly isLive = true;
+  usedFallback = false;
+
+  constructor(
+    private readonly live: StationProvider,
+    private readonly sample: StationProvider,
+  ) {
+    this.id = live.id;
+    this.label = live.label;
+  }
+
+  async findAlongRoute(
+    route: Parameters<StationProvider["findAlongRoute"]>[0],
+    query: Parameters<StationProvider["findAlongRoute"]>[1],
+  ) {
+    this.usedFallback = false;
+    const live = await this.live.findAlongRoute(route, query);
+    if (live.length > 0) return live;
+    this.usedFallback = true;
+    return this.sample.findAlongRoute(route, query);
+  }
+}
+
 export function resolveProviders(
   fuelKind: FuelKind,
   departAt?: Date,
@@ -26,8 +52,11 @@ export function resolveProviders(
   const opinetKey = process.env.OPINET_CERT_KEY?.trim();
   const kakaoKey = process.env.KAKAO_REST_API_KEY?.trim();
 
-  const stations: StationProvider = opinetKey
+  const liveStations = opinetKey
     ? new OpinetStationProvider(opinetKey)
+    : null;
+  const stations: StationProvider = liveStations
+    ? new LiveStationsWithSampleFallback(liveStations, new MockStationProvider())
     : new MockStationProvider();
 
   const routes: RouteProvider = kakaoKey
@@ -35,6 +64,12 @@ export function resolveProviders(
     : new MockRouteProvider();
 
   return { stations, routes, anyLive: stations.isLive || routes.isLive };
+}
+
+export function stationsUsedSampleFallback(stations: StationProvider): boolean {
+  return (
+    stations instanceof LiveStationsWithSampleFallback && stations.usedFallback
+  );
 }
 
 export { MockRouteProvider, MockStationProvider };

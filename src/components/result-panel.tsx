@@ -9,7 +9,7 @@ import { CostBreakdown } from "@/components/cost-breakdown";
 import { FuelTimeline } from "@/components/fuel-timeline";
 import { shouldSuggestSkipRefuel } from "@/lib/domain/cost";
 import { isUnreachableByCarMessage } from "@/lib/domain/driving-region";
-import type { RankedOption, RefuelPlan } from "@/lib/domain/types";
+import { FUEL_KIND_LABEL, type RankedOption, type RefuelPlan } from "@/lib/domain/types";
 import { StationName } from "@/components/station-name";
 import {
   cashCostKrw,
@@ -202,7 +202,7 @@ export function ResultPanel({
           <div>
             <dd className="font-mono text-sm">{plan.options.length}곳</dd>
             <dt className="text-[11px] text-muted-foreground">
-              정밀 비교 후보
+              {FUEL_KIND_LABEL[plan.vehicle.fuelKind]} 후보
             </dt>
           </div>
         </dl>
@@ -211,7 +211,9 @@ export function ResultPanel({
       {plan.options.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-6 text-center">
           <CircleSlash className="mx-auto size-6 text-muted-foreground" />
-          <p className="mt-2 text-sm font-medium">비교할 주유소가 없습니다</p>
+          <p className="mt-2 text-sm font-medium">
+            {FUEL_KIND_LABEL[plan.vehicle.fuelKind]} 주유소가 없습니다
+          </p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             우회 허용 거리·시간을 늘리거나 브랜드 조건을 풀어 보세요.
             {plan.excluded.length > 0 &&
