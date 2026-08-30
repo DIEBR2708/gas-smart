@@ -97,6 +97,16 @@ describe("buildRefuelPlan", () => {
     }
   });
 
+  it("예비량 아래로 도착하는 주유소는 목록에 올리지 않는다", async () => {
+    const result = await plan({
+      vehicle: { currentFuelL: 12, kmPerLiter: 10, reserveL: 5 },
+    });
+    for (const option of result.options) {
+      expect(option.fuelOnArrivalL).toBeGreaterThanOrEqual(5 - 1e-6);
+    }
+    expect(result.excluded.some((e) => e.reason.includes("예비"))).toBe(true);
+  });
+
   it("연료가 거의 없으면 먼 주유소를 후보에서 제외한다", async () => {
     const result = await plan({ vehicle: { currentFuelL: 3, kmPerLiter: 10 } });
     for (const option of result.options) {

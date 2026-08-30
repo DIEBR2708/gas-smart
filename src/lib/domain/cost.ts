@@ -18,6 +18,14 @@ const LOW_MARGIN_RATIO = 0.08;
 
 const EPS = 1e-9;
 
+/**
+ * 주유소에 도착할 때 이 잔량 미만이면 후보에서 뺀다.
+ * 이미 예비량보다 적게 남긴 채 출발했다면 0L까지는 허용한다.
+ */
+export function minArrivalFuelL(vehicle: Vehicle): number {
+  return vehicle.currentFuelL + EPS >= vehicle.reserveL ? vehicle.reserveL : 0;
+}
+
 export interface CostContext {
   vehicle: Vehicle;
   preferences: Preferences;
@@ -173,7 +181,7 @@ export function evaluateOption(
   // 펌프에 도착할 때까지 달린 거리: 본선 주행분 + 진입 우회분(왕복 중 절반)
   const inboundKm = detour.alongRouteM / 1000 + detourKm / 2;
   const fuelOnArrivalL = vehicle.currentFuelL - inboundKm / e;
-  const reachable = fuelOnArrivalL >= 0;
+  const reachable = fuelOnArrivalL + EPS >= minArrivalFuelL(vehicle);
 
   const maxFillableL = Math.max(
     0,
@@ -223,7 +231,10 @@ export function evaluateOption(
     warnings.push({
       code: "unreachable",
       severity: "error",
-      message: `현재 연료로는 도달 전에 ${Math.abs(fuelOnArrivalL).toFixed(1)}L 부족합니다.`,
+      message:
+        fuelOnArrivalL < 0
+          ? `현재 연료로는 도달 전에 ${Math.abs(fuelOnArrivalL).toFixed(1)}L 부족합니다.`
+          : `예비 ${vehicle.reserveL}L 아래로 내려가 이 주유소는 제외합니다.`,
     });
   } else if (fuelOnArrivalL < vehicle.tankCapacityL * LOW_MARGIN_RATIO) {
     warnings.push({

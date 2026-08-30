@@ -4,6 +4,7 @@ import {
   effectivePricePerLiter,
   evaluateOption,
   litersRequiredForTrip,
+  minArrivalFuelL,
   median,
   type CostContext,
 } from "./cost";
@@ -160,11 +161,19 @@ export async function buildRefuelPlan(
       });
       continue;
     }
-    // 현재 연료로 진입 지점까지도 못 가는 곳은 후보가 아니다.
-    // 이걸 놓치면 앱이 사용자를 길에 세우게 된다.
-    const fuelToReachL = proj.alongM / 1000 / vehicle.kmPerLiter;
-    if (fuelToReachL > vehicle.currentFuelL) {
-      excluded.push({ station, reason: "현재 연료로 도달 불가" });
+    // 예비량 아래로 떨어져 도착하는 곳은 후보가 아니다.
+    // 이미 예비량보다 적으면 0L까지만 허용한다.
+    const fuelLeftL =
+      vehicle.currentFuelL - proj.alongM / 1000 / vehicle.kmPerLiter;
+    const arrivalFloorL = minArrivalFuelL(vehicle);
+    if (fuelLeftL + 1e-9 < arrivalFloorL) {
+      excluded.push({
+        station,
+        reason:
+          arrivalFloorL > 0
+            ? `예비 ${vehicle.reserveL}L 아래로 내려가 제외`
+            : "현재 연료로 도달 불가",
+      });
       continue;
     }
     surviving.push({ station, proj });
@@ -309,7 +318,13 @@ export async function buildRefuelPlan(
       const option = evaluateOption(station, detour, ctx);
       if (!option) continue;
       if (!option.reachable) {
-        excluded.push({ station, reason: "현재 연료로 도달 불가" });
+        excluded.push({
+          station,
+          reason:
+            option.fuelOnArrivalL >= 0
+              ? `예비 ${vehicle.reserveL}L 아래로 내려가 제외`
+              : "현재 연료로 도달 불가",
+        });
         continue;
       }
       if (option.warnings.some((w) => w.code === "closed-on-arrival")) {

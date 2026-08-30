@@ -4,6 +4,7 @@ import {
   effectivePricePerLiter,
   evaluateOption,
   litersRequiredForTrip,
+  minArrivalFuelL,
   median,
   type CostContext,
 } from "./cost";
@@ -77,6 +78,20 @@ describe("effectivePricePerLiter", () => {
   });
 });
 
+describe("minArrivalFuelL", () => {
+  it("현재 연료가 예비량 이상이면 예비량이 하한이다", () => {
+    expect(
+      minArrivalFuelL({ ...DEFAULT_VEHICLE, currentFuelL: 9, reserveL: 5 }),
+    ).toBe(5);
+  });
+
+  it("이미 예비량보다 적으면 0까지 허용한다", () => {
+    expect(
+      minArrivalFuelL({ ...DEFAULT_VEHICLE, currentFuelL: 4, reserveL: 5 }),
+    ).toBe(0);
+  });
+});
+
 describe("litersRequiredForTrip", () => {
   it("현재 연료와 예비량을 반영한다", () => {
     // 100km / 10km/L = 10L 필요, 예비 6L, 보유 4L -> 12L
@@ -131,6 +146,40 @@ describe("evaluateOption", () => {
     // 우회 10km / 10km/L = 1L 추가 주유
     expect(far.litersToBuy - near.litersToBuy).toBeCloseTo(1, 5);
     expect(far.detourFuelL).toBeCloseTo(1, 5);
+  });
+
+  it("예비량 아래로 도착하면 도달 불가다", () => {
+    const c = ctx({
+      vehicle: { currentFuelL: 10, reserveL: 5, kmPerLiter: 10 },
+    });
+    const below = evaluateOption(
+      testStation(),
+      testDetour({ alongRouteM: 60_000, extraDistanceM: 0 }),
+      c,
+    )!;
+    expect(below.fuelOnArrivalL).toBeCloseTo(4, 5);
+    expect(below.reachable).toBe(false);
+
+    const ok = evaluateOption(
+      testStation(),
+      testDetour({ alongRouteM: 40_000, extraDistanceM: 0 }),
+      c,
+    )!;
+    expect(ok.fuelOnArrivalL).toBeCloseTo(6, 5);
+    expect(ok.reachable).toBe(true);
+  });
+
+  it("이미 예비량보다 적게 출발하면 0L까지는 도달 가능하다", () => {
+    const c = ctx({
+      vehicle: { currentFuelL: 4, reserveL: 5, kmPerLiter: 10 },
+    });
+    const option = evaluateOption(
+      testStation(),
+      testDetour({ alongRouteM: 20_000, extraDistanceM: 0 }),
+      c,
+    )!;
+    expect(option.fuelOnArrivalL).toBeCloseTo(2, 5);
+    expect(option.reachable).toBe(true);
   });
 
   it("현재 연료로 못 가는 주유소는 도달 불가로 표시된다", () => {

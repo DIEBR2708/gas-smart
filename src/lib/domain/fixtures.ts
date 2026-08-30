@@ -13,7 +13,7 @@ export const DEFAULT_VEHICLE: Vehicle = {
   kmPerLiter: 11.5,
   tankCapacityL: 60,
   currentFuelL: 9,
-  reserveL: 6,
+  reserveL: 5,
 };
 
 export const DEFAULT_PREFERENCES: Preferences = {

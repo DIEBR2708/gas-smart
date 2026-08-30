@@ -364,7 +364,7 @@ export function SettingsPanel({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="reserve" className="text-sm text-foreground/85">
-              도착 시 예비량 (L)
+              예비량 (L)
             </Label>
             <Input
               id="reserve"
@@ -385,7 +385,7 @@ export function SettingsPanel({
         <Field
           label="현재 연료량"
           value={`${liters(vehicle.currentFuelL)} · ${tankPercent}%`}
-          hint="이 값이 후보 범위를 결정합니다. 도달할 수 없는 주유소는 아예 추천하지 않습니다."
+          hint="이 값과 예비량이 후보 범위를 결정합니다. 예비량 아래로 떨어져 도착하는 주유소는 목록에 올리지 않습니다."
         >
           <Slider
             value={[vehicle.currentFuelL]}

@@ -22,6 +22,7 @@ const KEYS = {
   reports: "cfn.reports",
   lastPlan: "cfn.lastPlan",
   session: "cfn.session",
+  reserve5Migrated: "cfn.migrated.reserve5",
 };
 
 export interface SessionState {
@@ -85,7 +86,23 @@ export function loadCachedPlan(): { savedAt: string; response: PlanResponse } | 
 }
 
 export function loadSession(): SessionState | null {
-  return readJson<SessionState | null>(KEYS.session, null);
+  const session = readJson<SessionState | null>(KEYS.session, null);
+  if (!session) return null;
+  // 예비 기본값을 6L에서 5L로 옮긴다. 예전에 기본값 그대로 쓰던 세션만 한 번 맞춘다.
+  if (typeof window !== "undefined") {
+    try {
+      if (!window.localStorage.getItem(KEYS.reserve5Migrated)) {
+        window.localStorage.setItem(KEYS.reserve5Migrated, "1");
+        if (session.vehicle.reserveL === 6) {
+          session.vehicle = { ...session.vehicle, reserveL: 5 };
+          writeJson(KEYS.session, session);
+        }
+      }
+    } catch {
+      // quota / private mode
+    }
+  }
+  return session;
 }
 
 export function saveSession(session: SessionState) {
