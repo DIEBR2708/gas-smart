@@ -6,6 +6,7 @@ import { FlaskConical, Loader2, Map as MapIcon, SlidersHorizontal } from "lucide
 import { PlaceSearch } from "@/components/place-search";
 import { ResultPanel } from "@/components/result-panel";
 import { SettingsPanel } from "@/components/settings-panel";
+import { SwipePages } from "@/components/swipe-pages";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -371,30 +372,30 @@ export function Planner({ routes }: Props) {
             </TabButton>
           </div>
 
-          <div className="thin-scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-4">
-            {tab === "result" ? (
-              <ResultPanel
-                plan={plan}
-                loading={loading}
-                error={error}
-                selectedId={selectedId}
-                onSelect={handleSelect}
-                fromCache={fromCache}
-                cachedAt={cachedAt}
-              />
-            ) : (
-              <SettingsPanel
-                vehicle={vehicle}
-                preferences={preferences}
-                onVehicleChange={(patch) =>
-                  setVehicle((current) => ({ ...current, ...patch }))
-                }
-                onPreferencesChange={(patch) =>
-                  setPreferences((current) => ({ ...current, ...patch }))
-                }
-              />
-            )}
-          </div>
+          <SwipePages
+            index={tab === "result" ? 0 : 1}
+            onIndexChange={(next) => setTab(next === 0 ? "result" : "settings")}
+          >
+            <ResultPanel
+              plan={plan}
+              loading={loading}
+              error={error}
+              selectedId={selectedId}
+              onSelect={handleSelect}
+              fromCache={fromCache}
+              cachedAt={cachedAt}
+            />
+            <SettingsPanel
+              vehicle={vehicle}
+              preferences={preferences}
+              onVehicleChange={(patch) =>
+                setVehicle((current) => ({ ...current, ...patch }))
+              }
+              onPreferencesChange={(patch) =>
+                setPreferences((current) => ({ ...current, ...patch }))
+              }
+            />
+          </SwipePages>
         </aside>
       </div>
     </div>
