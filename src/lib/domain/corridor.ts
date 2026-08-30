@@ -45,6 +45,13 @@ const SAFETY_FACTOR = 0.9;
 /** 너무 촘촘해져 호출이 폭발하지 않도록 두는 최소 간격 (m) */
 const MIN_SAMPLE_INTERVAL_M = 600;
 
+/**
+ * 꺾임각을 잴 때 정점 양쪽에서 이 거리만큼 떨어진 점을 쓴다.
+ * 카카오 경로는 수 미터마다 점이 찍혀 차선 흔들림이 90도로 보인다.
+ * 실제 나들목은 이보다 훨씬 긴 구간에서 꺾이므로 덮는 폭은 그대로다.
+ */
+const TURN_LEG_M = 120;
+
 export interface CorridorSearchPlan {
   /** 각 호출에 사용할 반경 (m) */
   searchRadiusM: number;
@@ -60,10 +67,32 @@ export interface CorridorSearchPlan {
   maxTurnDeg: number;
 }
 
-function turnAngleAtVertex(polyline: LatLng[], i: number): number {
-  const a = polyline[i - 1];
+function indexAtLeastM(
+  cum: number[],
+  fromIndex: number,
+  direction: -1 | 1,
+  minM: number,
+): number {
+  const start = cum[fromIndex] ?? 0;
+  let i = fromIndex;
+  while (i + direction >= 0 && i + direction < cum.length) {
+    i += direction;
+    if (Math.abs((cum[i] ?? 0) - start) >= minM) return i;
+  }
+  return i;
+}
+
+function turnAngleAtVertex(
+  polyline: LatLng[],
+  i: number,
+  cum: number[],
+): number {
+  const prev = indexAtLeastM(cum, i, -1, TURN_LEG_M);
+  const next = indexAtLeastM(cum, i, 1, TURN_LEG_M);
+  if (prev === i || next === i) return 0;
+  const a = polyline[prev];
   const b = polyline[i];
-  const c = polyline[i + 1];
+  const c = polyline[next];
   const ab = haversineM(a, b);
   const bc = haversineM(b, c);
   const ac = haversineM(a, c);
@@ -75,9 +104,10 @@ function turnAngleAtVertex(polyline: LatLng[], i: number): number {
 
 /** 폴리라인에서 가장 급한 꺾임각 (라디안). 직선이면 0. */
 export function maxTurnAngleRad(polyline: LatLng[]): number {
+  const cum = cumulativeDistances(polyline);
   let worst = 0;
   for (let i = 1; i < polyline.length - 1; i += 1) {
-    worst = Math.max(worst, turnAngleAtVertex(polyline, i));
+    worst = Math.max(worst, turnAngleAtVertex(polyline, i, cum));
   }
   return worst;
 }
@@ -92,7 +122,7 @@ export function maxTurnInRangeRad(
   let worst = 0;
   for (let i = 1; i < polyline.length - 1; i += 1) {
     if (cum[i] < fromM || cum[i] > toM) continue;
-    worst = Math.max(worst, turnAngleAtVertex(polyline, i));
+    worst = Math.max(worst, turnAngleAtVertex(polyline, i, cum));
   }
   return worst;
 }

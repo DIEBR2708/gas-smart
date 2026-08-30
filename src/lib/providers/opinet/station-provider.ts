@@ -4,6 +4,7 @@ import {
   sampleCorridorCenters,
 } from "@/lib/domain/corridor";
 import { haversineM } from "@/lib/domain/geo";
+import { fetchOutbound, mapPool } from "@/lib/http";
 import type {
   Brand,
   FuelKind,
@@ -98,17 +99,20 @@ export class OpinetStationProvider implements StationProvider {
     );
 
     const rows = new Map<string, AroundAllRow>();
-    const concurrency = 10;
-    for (let i = 0; i < samples.length; i += concurrency) {
-      const batch = samples.slice(i, i + concurrency);
-      const results = await Promise.all(
-        batch.map((s) => this.fetchAround(s.point, radiusM, query.fuelKind)),
-      );
-      for (const list of results) {
-        for (const row of list) rows.set(row.UNI_ID, row);
-      }
+    const results = await mapPool(samples, 12, (s) =>
+      this.fetchAround(s.point, radiusM, query.fuelKind),
+    );
+    for (const list of results) {
+      for (const row of list) rows.set(row.UNI_ID, row);
     }
 
+    return this.rowsToStations(rows, query.fuelKind);
+  }
+
+  private rowsToStations(
+    rows: Map<string, AroundAllRow>,
+    fuelKind: FuelKind,
+  ): Station[] {
     const stations: Station[] = [];
     for (const row of rows.values()) {
       const coord = katecToWgs84(Number(row.GIS_X_COOR), Number(row.GIS_Y_COOR));
@@ -118,17 +122,14 @@ export class OpinetStationProvider implements StationProvider {
         id: row.UNI_ID,
         name: displayStationName(String(row.OS_NM ?? "")),
         brand: toBrand(String(row.POLL_DIV_CD ?? row.POLL_DIV_CO ?? "ETC")),
-        // aroundAll 응답에 셀프 여부가 없어 상세 조회 전에는 알 수 없다.
         isSelfService: false,
         lat: coord.lat,
         lng: coord.lng,
-        prices: { [query.fuelKind]: price },
-        // 오피넷은 개별 신고 시각을 주지 않는다. 일별 갱신을 가정한다.
+        prices: { [fuelKind]: price },
         priceUpdatedAt: startOfToday().toISOString(),
         openingHours: { allDay: true },
       });
     }
-
     return stations;
   }
 
@@ -151,12 +152,9 @@ export class OpinetStationProvider implements StationProvider {
     url.searchParams.set("sort", "1");
     url.searchParams.set("prodcd", OPINET_PROD_CODE[fuelKind]);
 
+    const res = await fetchOutbound(url, { timeoutMs: 6_000 });
+    if (!res.ok) return [];
     try {
-      const res = await fetch(url, {
-        next: { revalidate: 1800 },
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (!res.ok) return [];
       const json = (await res.json()) as { RESULT?: { OIL?: AroundAllRow[] } };
       const rows = json.RESULT?.OIL ?? [];
       if (cache.size > 200) {
@@ -208,10 +206,7 @@ export class OpinetStationProvider implements StationProvider {
     url.searchParams.set("certkey", this.certKey);
     url.searchParams.set("id", uniId);
     try {
-      const res = await fetch(url, {
-        next: { revalidate: 1800 },
-        signal: AbortSignal.timeout(8_000),
-      });
+      const res = await fetchOutbound(url, { timeoutMs: 5_000 });
       if (!res.ok) return null;
       const json = (await res.json()) as { RESULT?: { OIL?: DetailRow[] } };
       return json.RESULT?.OIL?.[0] ?? null;

@@ -102,6 +102,24 @@ describe("planCorridorSearch", () => {
     expect(plan.callCount).toBeLessThan(uniform);
     expect(plan.callCount).toBeGreaterThan(5);
   });
+
+  it("촘촘한 직선 흔들림은 검색 간격을 좁히지 않는다", () => {
+    const line: LatLng[] = [];
+    for (let i = 0; i <= 400; i += 1) {
+      line.push({
+        lat: 36 + i * 0.002,
+        lng: 127 + (i % 2 === 0 ? 0 : 0.00004),
+      });
+    }
+    const plan = planCorridorSearch(line, 4000);
+    const straightStep = corridorSampleIntervalM(
+      STATION_SEARCH_MAX_RADIUS_M,
+      plan.coveredHalfWidthM,
+      0,
+    );
+    const total = cumulativeDistances(line).at(-1) ?? 0;
+    expect(plan.callCount).toBeLessThanOrEqual(Math.ceil(total / straightStep) + 3);
+  });
 });
 
 /**

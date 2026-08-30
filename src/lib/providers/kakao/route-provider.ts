@@ -11,6 +11,7 @@ import type {
   Route,
   Station,
 } from "@/lib/domain/types";
+import { fetchOutbound, mapPool } from "@/lib/http";
 import type { RouteProvider } from "../types";
 
 /**
@@ -28,7 +29,9 @@ import type { RouteProvider } from "../types";
 
 const ROUTE_CACHE_TTL_MS = 10 * 60 * 1000;
 const routeCache = new Map<string, { at: number; route: Route }>();
+const routeInflight = new Map<string, Promise<Route>>();
 const detourCache = new Map<string, { at: number; detour: Detour }>();
+const detourInflight = new Map<string, Promise<Detour | null>>();
 
 function pruneTimedCache<T extends { at: number }>(
   map: Map<string, T>,
@@ -124,6 +127,12 @@ export class KakaoRouteProvider implements RouteProvider {
     return `${get("year")}${get("month")}${get("day")}${get("hour")}${get("minute")}`;
   }
 
+  /**
+   * 미래길찾기가 한 번이라도 실패하면 이 프로세스에서는 다시 시도하지 않는다.
+   * 경유 후보마다 미래→일반을 순차로 치면 우회 계산만 두 배가 된다.
+   */
+  private static futureDisabled = false;
+
   private async request(
     origin: LatLng,
     destination: LatLng,
@@ -135,7 +144,8 @@ export class KakaoRouteProvider implements RouteProvider {
     polyline: LatLng[];
     includesTraffic: boolean;
   } | null> {
-    const departure = this.futureDepartureParam();
+    const departure =
+      KakaoRouteProvider.futureDisabled ? null : this.futureDepartureParam();
     if (departure) {
       const future = await this.requestOnce(
         FUTURE_DIRECTIONS_URL,
@@ -145,6 +155,7 @@ export class KakaoRouteProvider implements RouteProvider {
         departure,
       );
       if (future) return { ...future, includesTraffic: true };
+      KakaoRouteProvider.futureDisabled = true;
     }
     const live = await this.requestOnce(
       DIRECTIONS_URL,
@@ -184,9 +195,9 @@ export class KakaoRouteProvider implements RouteProvider {
       url.searchParams.set("departure_time", departureTime);
     }
 
-    const res = await fetch(url, {
-      headers: this.headers(),
-      signal: AbortSignal.timeout(8_000),
+    const res = await fetchOutbound(url, {
+      headers: this.headers() as Record<string, string>,
+      timeoutMs: 6_000,
     });
     if (!res.ok) return null;
     const json = (await res.json()) as KakaoRouteResponse;
@@ -229,27 +240,44 @@ export class KakaoRouteProvider implements RouteProvider {
         id: `kakao-${origin.name}-${destination.name}`,
       };
     }
-
-    const result = await this.request(origin, destination);
-    if (!result) {
-      throw new Error("카카오 길찾기 응답을 받지 못했습니다.");
+    const running = routeInflight.get(cacheKey);
+    if (running) {
+      const route = await running;
+      return {
+        ...route,
+        origin,
+        destination,
+        id: `kakao-${origin.name}-${destination.name}`,
+      };
     }
-    const route: Route = {
-      id: `kakao-${origin.name}-${destination.name}`,
-      origin,
-      destination,
-      polyline: result.polyline.length > 1 ? result.polyline : [origin, destination],
-      distanceM: result.distanceM,
-      durationS: result.durationS,
-      tollKrw: result.tollKrw,
-      summary: result.includesTraffic
-        ? "카카오 추천 경로 (출발 시각 정체 반영)"
-        : "카카오 추천 경로",
-      durationIncludesTraffic: result.includesTraffic,
-    };
-    pruneTimedCache(routeCache, ROUTE_CACHE_TTL_MS, 40);
-    routeCache.set(cacheKey, { at: Date.now(), route });
-    return route;
+
+    const pending = (async () => {
+      const result = await this.request(origin, destination);
+      if (!result) {
+        throw new Error("카카오 길찾기 응답을 받지 못했습니다.");
+      }
+      const route: Route = {
+        id: `kakao-${origin.name}-${destination.name}`,
+        origin,
+        destination,
+        polyline:
+          result.polyline.length > 1 ? result.polyline : [origin, destination],
+        distanceM: result.distanceM,
+        durationS: result.durationS,
+        tollKrw: result.tollKrw,
+        summary: result.includesTraffic
+          ? "카카오 추천 경로 (출발 시각 정체 반영)"
+          : "카카오 추천 경로",
+        durationIncludesTraffic: result.includesTraffic,
+      };
+      pruneTimedCache(routeCache, ROUTE_CACHE_TTL_MS, 40);
+      routeCache.set(cacheKey, { at: Date.now(), route });
+      return route;
+    })().finally(() => {
+      routeInflight.delete(cacheKey);
+    });
+    routeInflight.set(cacheKey, pending);
+    return pending;
   }
 
   /**
@@ -274,7 +302,8 @@ export class KakaoRouteProvider implements RouteProvider {
 
     const pending: Station[] = [];
     for (const station of stations) {
-      const hit = detourCache.get(`${routeKey}|${station.id}`);
+      const key = `${routeKey}|${station.id}`;
+      const hit = detourCache.get(key);
       if (hit && Date.now() - hit.at < ROUTE_CACHE_TTL_MS) {
         out.set(station.id, hit.detour);
       } else {
@@ -282,50 +311,47 @@ export class KakaoRouteProvider implements RouteProvider {
       }
     }
 
-    const concurrency = 8;
-    for (let i = 0; i < pending.length; i += concurrency) {
-      const batch = pending.slice(i, i + concurrency);
-      const results = await Promise.all(
-        batch.map(async (station) => {
-          const viaStation = await this.request(
-            route.origin,
-            route.destination,
-            station,
-          );
-          return { station, viaStation };
-        }),
-      );
+    const results = await mapPool(pending, 12, async (station) => {
+      const key = `${routeKey}|${station.id}`;
+      const running = detourInflight.get(key);
+      if (running) return { station, detour: await running };
 
-      for (const { station, viaStation } of results) {
-        const proj = projectOntoPolyline(station, route.polyline, cum);
-        if (!viaStation) continue;
-        const detour: Detour = {
-          extraDistanceM: Math.max(0, viaStation.distanceM - route.distanceM),
-          extraDurationS: Math.max(0, viaStation.durationS - route.durationS),
-          extraTollKrw: viaStation.tollKrw - route.tollKrw,
-          alongRouteM: proj.alongM,
-          offRouteM: proj.offsetM,
-          joinPoint: proj.point,
-          source: "routing-api",
-          viaPolyline:
-            viaStation.polyline.length > 1
-              ? viaStation.polyline
-              : viaRoutePolyline(
-                  route.polyline,
-                  station,
-                  proj.point,
-                  proj.alongM,
-                ),
-        };
-        out.set(station.id, detour);
-        detourCache.set(`${routeKey}|${station.id}`, {
-          at: Date.now(),
-          detour,
+      const promise = this.request(route.origin, route.destination, station)
+        .then((viaStation) => {
+          if (!viaStation) return null;
+          const proj = projectOntoPolyline(station, route.polyline, cum);
+          const detour: Detour = {
+            extraDistanceM: Math.max(0, viaStation.distanceM - route.distanceM),
+            extraDurationS: Math.max(0, viaStation.durationS - route.durationS),
+            extraTollKrw: viaStation.tollKrw - route.tollKrw,
+            alongRouteM: proj.alongM,
+            offRouteM: proj.offsetM,
+            joinPoint: proj.point,
+            source: "routing-api",
+            viaPolyline:
+              viaStation.polyline.length > 1
+                ? viaStation.polyline
+                : viaRoutePolyline(
+                    route.polyline,
+                    station,
+                    proj.point,
+                    proj.alongM,
+                  ),
+          };
+          detourCache.set(key, { at: Date.now(), detour });
+          return detour;
+        })
+        .finally(() => {
+          detourInflight.delete(key);
         });
-      }
+      detourInflight.set(key, promise);
+      return { station, detour: await promise };
+    });
+
+    for (const { station, detour } of results) {
+      if (detour) out.set(station.id, detour);
     }
     pruneTimedCache(detourCache, ROUTE_CACHE_TTL_MS, 400);
-
     return out;
   }
 
