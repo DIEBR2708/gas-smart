@@ -1,4 +1,4 @@
-import { cumulativeDistances, haversineM } from "./geo";
+import { cumulativeDistances, haversineM, pointAtDistance } from "./geo";
 import type { LatLng } from "./types";
 
 /**
@@ -60,23 +60,76 @@ export interface CorridorSearchPlan {
   maxTurnDeg: number;
 }
 
+function turnAngleAtVertex(polyline: LatLng[], i: number): number {
+  const a = polyline[i - 1];
+  const b = polyline[i];
+  const c = polyline[i + 1];
+  const ab = haversineM(a, b);
+  const bc = haversineM(b, c);
+  const ac = haversineM(a, c);
+  if (ab === 0 || bc === 0) return 0;
+  const cosInterior = (ab * ab + bc * bc - ac * ac) / (2 * ab * bc);
+  const interior = Math.acos(Math.min(1, Math.max(-1, cosInterior)));
+  return Math.PI - interior;
+}
+
 /** 폴리라인에서 가장 급한 꺾임각 (라디안). 직선이면 0. */
 export function maxTurnAngleRad(polyline: LatLng[]): number {
   let worst = 0;
   for (let i = 1; i < polyline.length - 1; i += 1) {
-    const a = polyline[i - 1];
-    const b = polyline[i];
-    const c = polyline[i + 1];
-    const ab = haversineM(a, b);
-    const bc = haversineM(b, c);
-    const ac = haversineM(a, c);
-    if (ab === 0 || bc === 0) continue;
-    // 코사인 법칙으로 정점 b에서의 내각을 구하고, 진행 방향의 변화량으로 바꾼다.
-    const cosInterior = (ab * ab + bc * bc - ac * ac) / (2 * ab * bc);
-    const interior = Math.acos(Math.min(1, Math.max(-1, cosInterior)));
-    worst = Math.max(worst, Math.PI - interior);
+    worst = Math.max(worst, turnAngleAtVertex(polyline, i));
   }
   return worst;
+}
+
+/** [fromM, toM] 구간의 정점 꺾임 중 가장 급한 각. */
+export function maxTurnInRangeRad(
+  polyline: LatLng[],
+  fromM: number,
+  toM: number,
+  cum: number[] = cumulativeDistances(polyline),
+): number {
+  let worst = 0;
+  for (let i = 1; i < polyline.length - 1; i += 1) {
+    if (cum[i] < fromM || cum[i] > toM) continue;
+    worst = Math.max(worst, turnAngleAtVertex(polyline, i));
+  }
+  return worst;
+}
+
+/**
+ * 회랑을 빈틈 없이 덮는 검색 중심점.
+ *
+ * 카카오 경로처럼 정점이 촘촘하면 램프 한 곳의 급커브가 경로 전체 간격을
+ * 600m로 끌어내린다. 앞을 보고 그 구간의 꺾임만 반영하면 직선은 넓게,
+ * 나들목만 촘촘히 친다. 덮는 폭은 그대로다.
+ */
+export function sampleCorridorCenters(
+  polyline: LatLng[],
+  halfWidthM: number,
+  searchRadiusM: number = STATION_SEARCH_MAX_RADIUS_M,
+): { point: LatLng; alongM: number }[] {
+  if (polyline.length === 0) return [];
+  const cum = cumulativeDistances(polyline);
+  const total = cum[cum.length - 1] ?? 0;
+  if (total <= 0) return [{ point: polyline[0], alongM: 0 }];
+
+  const straightStep = corridorSampleIntervalM(searchRadiusM, halfWidthM, 0);
+  const out: { point: LatLng; alongM: number }[] = [];
+  let d = 0;
+  while (d < total - 1) {
+    out.push({ point: pointAtDistance(polyline, d, cum), alongM: d });
+    const lookAheadTo = Math.min(total, d + straightStep);
+    const localTurn = maxTurnInRangeRad(polyline, d, lookAheadTo, cum);
+    const step = corridorSampleIntervalM(searchRadiusM, halfWidthM, localTurn);
+    d += step;
+  }
+  const end = polyline[polyline.length - 1];
+  const last = out[out.length - 1];
+  if (!last || Math.abs(last.alongM - total) > 1) {
+    out.push({ point: end, alongM: total });
+  }
+  return out;
 }
 
 /**
@@ -111,11 +164,16 @@ export function planCorridorSearch(
     coveredHalfWidthM,
     turnRad,
   );
+  const adaptiveCount = sampleCorridorCenters(
+    polyline,
+    coveredHalfWidthM,
+    searchRadiusM,
+  ).length;
   return {
     searchRadiusM,
     coveredHalfWidthM,
     intervalM,
-    callCount: Math.ceil(routeDistanceM / intervalM) + 1,
+    callCount: adaptiveCount,
     truncated: requestedHalfWidthM > maxHalfWidthM,
     maxTurnDeg: (turnRad * 180) / Math.PI,
   };

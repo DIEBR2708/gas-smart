@@ -26,6 +26,27 @@ import type { RouteProvider } from "../types";
  *  3. 좌표는 WGS84 경도(x)/위도(y) 순서다. 위경도 순서를 헷갈리면 조용히 틀린다.
  */
 
+const ROUTE_CACHE_TTL_MS = 10 * 60 * 1000;
+const routeCache = new Map<string, { at: number; route: Route }>();
+const detourCache = new Map<string, { at: number; detour: Detour }>();
+
+function pruneTimedCache<T extends { at: number }>(
+  map: Map<string, T>,
+  ttlMs: number,
+  maxSize: number,
+): void {
+  if (map.size <= maxSize) return;
+  const now = Date.now();
+  for (const [key, entry] of map) {
+    if (now - entry.at >= ttlMs) map.delete(key);
+  }
+  if (map.size <= maxSize) return;
+  const oldest = [...map.entries()].sort((a, b) => a[1].at - b[1].at);
+  for (let i = 0; i < oldest.length - maxSize; i += 1) {
+    map.delete(oldest[i][0]);
+  }
+}
+
 const DIRECTIONS_URL = "https://apis-navi.kakaomobility.com/v1/directions";
 const FUTURE_DIRECTIONS_URL =
   "https://apis-navi.kakaomobility.com/v1/future/directions";
@@ -156,12 +177,17 @@ export class KakaoRouteProvider implements RouteProvider {
     url.searchParams.set("car_fuel", FUEL_PARAM[this.options.fuelKind]);
     url.searchParams.set("car_hipass", String(this.options.hipass ?? true));
     url.searchParams.set("alternatives", "false");
-    url.searchParams.set("road_details", "true");
+    // 본선만 형상이 필요하다. 경유 요청에 road_details를 켜면 응답이 커지고
+    // 수십 후보에서 초 단위로 늘어난다. 경유 선은 본선+진입 근사로 그린다.
+    url.searchParams.set("road_details", waypoint ? "false" : "true");
     if (departureTime) {
       url.searchParams.set("departure_time", departureTime);
     }
 
-    const res = await fetch(url, { headers: this.headers() });
+    const res = await fetch(url, {
+      headers: this.headers(),
+      signal: AbortSignal.timeout(8_000),
+    });
     if (!res.ok) return null;
     const json = (await res.json()) as KakaoRouteResponse;
     const route = json.routes?.[0];
@@ -185,11 +211,30 @@ export class KakaoRouteProvider implements RouteProvider {
   }
 
   async findRoute(origin: NamedPlace, destination: NamedPlace): Promise<Route> {
+    const cacheKey = [
+      origin.lat.toFixed(4),
+      origin.lng.toFixed(4),
+      destination.lat.toFixed(4),
+      destination.lng.toFixed(4),
+      this.options.fuelKind,
+      this.options.priority ?? "RECOMMEND",
+      this.futureDepartureParam() ?? "",
+    ].join("|");
+    const cached = routeCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < ROUTE_CACHE_TTL_MS) {
+      return {
+        ...cached.route,
+        origin,
+        destination,
+        id: `kakao-${origin.name}-${destination.name}`,
+      };
+    }
+
     const result = await this.request(origin, destination);
     if (!result) {
       throw new Error("카카오 길찾기 응답을 받지 못했습니다.");
     }
-    return {
+    const route: Route = {
       id: `kakao-${origin.name}-${destination.name}`,
       origin,
       destination,
@@ -202,6 +247,9 @@ export class KakaoRouteProvider implements RouteProvider {
         : "카카오 추천 경로",
       durationIncludesTraffic: result.includesTraffic,
     };
+    pruneTimedCache(routeCache, ROUTE_CACHE_TTL_MS, 40);
+    routeCache.set(cacheKey, { at: Date.now(), route });
+    return route;
   }
 
   /**
@@ -214,10 +262,29 @@ export class KakaoRouteProvider implements RouteProvider {
   ): Promise<Map<string, Detour>> {
     const cum = cumulativeDistances(route.polyline);
     const out = new Map<string, Detour>();
-    const concurrency = 4;
+    const routeKey = [
+      route.origin.lat.toFixed(4),
+      route.origin.lng.toFixed(4),
+      route.destination.lat.toFixed(4),
+      route.destination.lng.toFixed(4),
+      this.options.fuelKind,
+      this.options.priority ?? "RECOMMEND",
+      this.futureDepartureParam() ?? "",
+    ].join("|");
 
-    for (let i = 0; i < stations.length; i += concurrency) {
-      const batch = stations.slice(i, i + concurrency);
+    const pending: Station[] = [];
+    for (const station of stations) {
+      const hit = detourCache.get(`${routeKey}|${station.id}`);
+      if (hit && Date.now() - hit.at < ROUTE_CACHE_TTL_MS) {
+        out.set(station.id, hit.detour);
+      } else {
+        pending.push(station);
+      }
+    }
+
+    const concurrency = 8;
+    for (let i = 0; i < pending.length; i += concurrency) {
+      const batch = pending.slice(i, i + concurrency);
       const results = await Promise.all(
         batch.map(async (station) => {
           const viaStation = await this.request(
@@ -232,7 +299,7 @@ export class KakaoRouteProvider implements RouteProvider {
       for (const { station, viaStation } of results) {
         const proj = projectOntoPolyline(station, route.polyline, cum);
         if (!viaStation) continue;
-        out.set(station.id, {
+        const detour: Detour = {
           extraDistanceM: Math.max(0, viaStation.distanceM - route.distanceM),
           extraDurationS: Math.max(0, viaStation.durationS - route.durationS),
           extraTollKrw: viaStation.tollKrw - route.tollKrw,
@@ -249,9 +316,15 @@ export class KakaoRouteProvider implements RouteProvider {
                   proj.point,
                   proj.alongM,
                 ),
+        };
+        out.set(station.id, detour);
+        detourCache.set(`${routeKey}|${station.id}`, {
+          at: Date.now(),
+          detour,
         });
       }
     }
+    pruneTimedCache(detourCache, ROUTE_CACHE_TTL_MS, 400);
 
     return out;
   }

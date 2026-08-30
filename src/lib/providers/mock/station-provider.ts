@@ -1,10 +1,9 @@
 import { getSampleStations, getStationsForRoute } from "@/lib/data/sample-stations";
-import { planCorridorSearch } from "@/lib/domain/corridor";
 import {
-  cumulativeDistances,
-  haversineM,
-  sampleAlongRoute,
-} from "@/lib/domain/geo";
+  planCorridorSearch,
+  sampleCorridorCenters,
+} from "@/lib/domain/corridor";
+import { haversineM } from "@/lib/domain/geo";
 import type { Route, Station } from "@/lib/domain/types";
 import type { StationProvider, StationQuery } from "../types";
 
@@ -22,9 +21,12 @@ export class MockStationProvider implements StationProvider {
 
   async findAlongRoute(route: Route, query: StationQuery): Promise<Station[]> {
     const all = [...getSampleStations(), ...getStationsForRoute(route)];
-    const cum = cumulativeDistances(route.polyline);
     const plan = planCorridorSearch(route.polyline, query.corridorHalfWidthM);
-    const samples = sampleAlongRoute(route.polyline, plan.intervalM, cum);
+    const samples = sampleCorridorCenters(
+      route.polyline,
+      plan.coveredHalfWidthM,
+      plan.searchRadiusM,
+    );
 
     const found = new Map<string, Station>();
     for (const sample of samples) {

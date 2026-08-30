@@ -5,13 +5,13 @@ import {
   corridorSampleIntervalM,
   maxTurnAngleRad,
   planCorridorSearch,
+  sampleCorridorCenters,
 } from "./corridor";
 import {
   cumulativeDistances,
   haversineM,
   pointAtDistance,
   projectOntoPolyline,
-  sampleAlongRoute,
 } from "./geo";
 import type { LatLng } from "./types";
 
@@ -90,6 +90,18 @@ describe("planCorridorSearch", () => {
     const wide = planCorridorSearch(SAMPLE_ROUTES[0].polyline, 4500);
     expect(narrow.callCount).toBeLessThan(wide.callCount);
   });
+
+  it("급커브 한 곳이 경로 전체 간격을 끌어내리지 않는다", () => {
+    const line: LatLng[] = [];
+    for (let i = 0; i <= 80; i += 1) {
+      line.push({ lat: 36 + i * 0.01, lng: 127 });
+    }
+    line.push({ lat: 36.8, lng: 127.03 });
+    const plan = planCorridorSearch(line, 4000);
+    const uniform = Math.ceil((cumulativeDistances(line).at(-1) ?? 0) / plan.intervalM) + 1;
+    expect(plan.callCount).toBeLessThan(uniform);
+    expect(plan.callCount).toBeGreaterThan(5);
+  });
 });
 
 /**
@@ -106,7 +118,11 @@ describe("경로 회랑에 사각지대가 없다", () => {
       it(`${route.origin.name}-${route.destination.name}, 요청 반폭 ${requestedHalfWidthM}m`, () => {
         const cum = cumulativeDistances(route.polyline);
         const plan = planCorridorSearch(route.polyline, requestedHalfWidthM);
-        const samples = sampleAlongRoute(route.polyline, plan.intervalM, cum);
+        const samples = sampleCorridorCenters(
+          route.polyline,
+          plan.coveredHalfWidthM,
+          plan.searchRadiusM,
+        );
 
         const offsetPoint = (alongM: number, offsetM: number): LatLng => {
           const a = pointAtDistance(route.polyline, alongM, cum);

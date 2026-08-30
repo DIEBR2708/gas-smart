@@ -1,10 +1,9 @@
 import proj4 from "proj4";
-import { planCorridorSearch } from "@/lib/domain/corridor";
 import {
-  cumulativeDistances,
-  haversineM,
-  sampleAlongRoute,
-} from "@/lib/domain/geo";
+  planCorridorSearch,
+  sampleCorridorCenters,
+} from "@/lib/domain/corridor";
+import { haversineM } from "@/lib/domain/geo";
 import type {
   Brand,
   FuelKind,
@@ -88,16 +87,18 @@ export class OpinetStationProvider implements StationProvider {
   constructor(private readonly certKey: string) {}
 
   async findAlongRoute(route: Route, query: StationQuery): Promise<Station[]> {
-    const cum = cumulativeDistances(route.polyline);
     // 호출 비용은 반경과 무관하므로 항상 상한 반경으로 요청하고,
-    // 원하는 회랑 폭에서 샘플 간격을 역산한다. 호출도 적고 빈틈도 없다.
+    // 원하는 회랑 폭에서 샘플 간격을 역산한다. 직선은 넓게, 꺾인 곳만 촘촘히.
     const plan = planCorridorSearch(route.polyline, query.corridorHalfWidthM);
     const radiusM = Math.round(plan.searchRadiusM);
-    const samples = sampleAlongRoute(route.polyline, plan.intervalM, cum);
+    const samples = sampleCorridorCenters(
+      route.polyline,
+      plan.coveredHalfWidthM,
+      plan.searchRadiusM,
+    );
 
     const rows = new Map<string, AroundAllRow>();
-    // 호출 폭주를 막기 위해 동시 요청 수를 제한한다.
-    const concurrency = 4;
+    const concurrency = 10;
     for (let i = 0; i < samples.length; i += concurrency) {
       const batch = samples.slice(i, i + concurrency);
       const results = await Promise.all(
@@ -151,10 +152,19 @@ export class OpinetStationProvider implements StationProvider {
     url.searchParams.set("prodcd", OPINET_PROD_CODE[fuelKind]);
 
     try {
-      const res = await fetch(url, { next: { revalidate: 1800 } });
+      const res = await fetch(url, {
+        next: { revalidate: 1800 },
+        signal: AbortSignal.timeout(8_000),
+      });
       if (!res.ok) return [];
       const json = (await res.json()) as { RESULT?: { OIL?: AroundAllRow[] } };
       const rows = json.RESULT?.OIL ?? [];
+      if (cache.size > 200) {
+        const now = Date.now();
+        for (const [entryKey, entry] of cache) {
+          if (now - entry.at >= CACHE_TTL_MS) cache.delete(entryKey);
+        }
+      }
       cache.set(key, { at: Date.now(), rows });
       return rows;
     } catch {
@@ -198,7 +208,10 @@ export class OpinetStationProvider implements StationProvider {
     url.searchParams.set("certkey", this.certKey);
     url.searchParams.set("id", uniId);
     try {
-      const res = await fetch(url, { next: { revalidate: 1800 } });
+      const res = await fetch(url, {
+        next: { revalidate: 1800 },
+        signal: AbortSignal.timeout(8_000),
+      });
       if (!res.ok) return null;
       const json = (await res.json()) as { RESULT?: { OIL?: DetailRow[] } };
       return json.RESULT?.OIL?.[0] ?? null;

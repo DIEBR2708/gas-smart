@@ -48,7 +48,7 @@ const MAX_EXACT_DETOUR_CANDIDATES = 24;
 const MIN_EXACT_DETOUR_CANDIDATES = 10;
 
 /** 경유지 길찾기를 한 번에 묶어 보내는 크기 */
-const DETOUR_BATCH_SIZE = 6;
+const DETOUR_BATCH_SIZE = 12;
 
 /** 회랑 반폭의 하한 (m). 우회 허용치가 아주 작아도 이 정도는 본다. */
 const MIN_CORRIDOR_HALF_WIDTH_M = 1200;

@@ -29,6 +29,31 @@ const FUEL_KINDS: FuelKind[] = ["gasoline", "premium", "diesel", "lpg"];
 const BRANDS: Brand[] = ["SKE", "GSC", "HDO", "SOL", "RTE", "RTX", "NHO", "ETC"];
 const REPORT_KINDS = ["closed", "price-mismatch", "gone"] as const;
 
+const PLAN_CACHE_TTL_MS = 90_000;
+const planResponseCache = new Map<string, { at: number; payload: unknown }>();
+
+function planCacheKey(input: {
+  routeId?: string;
+  origin: NamedPlace | null;
+  destination: NamedPlace | null;
+  vehicle: Vehicle;
+  preferences: Preferences;
+  reports: StationReport[];
+  departAt: Date;
+}): string {
+  return JSON.stringify({
+    routeId: input.routeId ?? "",
+    o: input.origin && [input.origin.lat.toFixed(4), input.origin.lng.toFixed(4)],
+    d:
+      input.destination &&
+      [input.destination.lat.toFixed(4), input.destination.lng.toFixed(4)],
+    v: input.vehicle,
+    p: input.preferences,
+    r: input.reports,
+    t: Math.floor(input.departAt.getTime() / 300_000),
+  });
+}
+
 interface PlanRequestBody {
   routeId?: string;
   origin?: NamedPlace;
@@ -64,7 +89,7 @@ function parseVehicle(input: Partial<Vehicle> | undefined): Vehicle {
     kmPerLiter: clamp(Number(input?.kmPerLiter), 3, 40, 11.5),
     tankCapacityL,
     currentFuelL: clamp(Number(input?.currentFuelL), 0, tankCapacityL, 14),
-    reserveL: clamp(Number(input?.reserveL), 0, tankCapacityL, 6),
+    reserveL: clamp(Number(input?.reserveL), 0, tankCapacityL, 5),
   };
 }
 
@@ -168,6 +193,15 @@ export async function POST(request: Request) {
   const providers = resolveProviders(vehicle.fuelKind, departAt);
   const origin = parsePlace(body.origin);
   const destination = parsePlace(body.destination);
+  const cacheKey = planCacheKey({
+    routeId: body.routeId,
+    origin,
+    destination,
+    vehicle,
+    preferences,
+    reports,
+    departAt,
+  });
 
   let route = getSampleRoute(body.routeId ?? "") ?? SAMPLE_ROUTES[0];
 
@@ -188,6 +222,14 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+  }
+
+  const cached = planResponseCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < PLAN_CACHE_TTL_MS) {
+    return NextResponse.json(cached.payload);
+  }
+
+  if (origin && destination) {
     try {
       route = await providers.routes.findRoute(origin, destination);
     } catch {
@@ -232,11 +274,19 @@ export async function POST(request: Request) {
       ]),
     );
 
-    return NextResponse.json({
+    const payload = {
       plan,
       shapes,
       dataMode: providers.anyLive ? "live" : "sample",
-    });
+    };
+    if (planResponseCache.size > 80) {
+      const now = Date.now();
+      for (const [key, entry] of planResponseCache) {
+        if (now - entry.at >= PLAN_CACHE_TTL_MS) planResponseCache.delete(key);
+      }
+    }
+    planResponseCache.set(cacheKey, { at: Date.now(), payload });
+    return NextResponse.json(payload);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "추천 계산에 실패했습니다.";

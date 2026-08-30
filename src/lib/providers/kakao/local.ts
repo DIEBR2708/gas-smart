@@ -89,9 +89,19 @@ export async function reverseGeocodeKakao(
   return { name, lat, lng };
 }
 
+let kakaoLocalDisabled = false;
+
 async function fetchJson<T>(url: string, key: string): Promise<T | null> {
+  if (kakaoLocalDisabled) return null;
   try {
-    const res = await fetch(url, { headers: headers(key) });
+    const res = await fetch(url, {
+      headers: headers(key),
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (res.status === 403) {
+      kakaoLocalDisabled = true;
+      return null;
+    }
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
