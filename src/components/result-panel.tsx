@@ -338,7 +338,7 @@ export function ResultPanel({
             <div className="flex items-baseline justify-between">
               <h2 className="text-sm font-semibold">후보 비교</h2>
               <span className="text-[11px] text-muted-foreground">
-                순위는 시간 포함 · 금액은 실제 지출
+                가까운 주유소보다 적을수록 이득
               </span>
             </div>
             <ul className="space-y-1.5">

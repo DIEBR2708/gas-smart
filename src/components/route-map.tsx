@@ -84,7 +84,7 @@ function popupHtml(option: RankedOption): string {
       <div style="font-weight:600;margin-bottom:2px">${BRAND_LABEL[option.station.brand]} <span style="font-weight:400;font-size:11px;color:#94a3b8">${stationTradeName(option.station.name, option.station.brand)}</span></div>
       <div style="color:#94a3b8">${perLiter(option.listPriceKrwPerL)} · 할인 후 ${perLiter(option.effectivePriceKrwPerL)}</div>
       <div style="color:#94a3b8">우회 ${detourKm}km</div>
-      <div style="margin-top:6px">기준선 대비 ${saving}</div>
+      <div style="margin-top:6px">가까운 주유소보다 ${saving}</div>
     </div>`;
 }
 

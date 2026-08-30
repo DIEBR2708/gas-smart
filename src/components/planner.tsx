@@ -100,6 +100,7 @@ export function Planner({ routes }: Props) {
   const [tab, setTab] = useState<Tab>("result");
   const [mapPick, setMapPick] = useState<"origin" | "destination" | null>(null);
   const [userLocation, setUserLocation] = useState<LatLng | null>(null);
+  const [previewRoute, setPreviewRoute] = useState<Route | null>(null);
 
   const requestSeq = useRef(0);
 
@@ -155,6 +156,7 @@ export function Planner({ routes }: Props) {
       }
 
       setLoading(true);
+      setPreviewRoute(null);
       fetchPlan(
         {
           routeId,
@@ -166,6 +168,10 @@ export function Planner({ routes }: Props) {
           reports,
         },
         controller.signal,
+        (route) => {
+          if (seq !== requestSeq.current) return;
+          setPreviewRoute(route);
+        },
       )
         .then((response) => {
           if (seq !== requestSeq.current) return;
@@ -220,7 +226,8 @@ export function Planner({ routes }: Props) {
     Boolean(origin && destination);
   const displayRoute = unreachable && origin && destination
     ? disconnectedEndpointsRoute(origin, destination)
-    : data?.plan.route ??
+    : previewRoute ??
+      data?.plan.route ??
       routes.find((r) => r.id === routeId) ??
       routes[0];
 
@@ -380,9 +387,9 @@ export function Planner({ routes }: Props) {
           <div className="pointer-events-none absolute top-3 right-3 z-[500] hidden flex-col gap-1 rounded-lg border border-border bg-background/85 px-2.5 py-2 text-[11px] backdrop-blur sm:flex">
             <Legend color="#60a5fa" label="본선 경로" />
             <Legend color="#f5b544" label="선택한 주유소 경유" />
-            <Legend color="#4ade80" label="기준선보다 이득" />
+            <Legend color="#4ade80" label="가까운 곳보다 이득" />
             <Legend color="#94a3b8" label="차이 미미" />
-            <Legend color="#f87171" label="기준선보다 손해" />
+            <Legend color="#f87171" label="가까운 곳보다 손해" />
             <span className="pt-0.5 text-[10px] text-muted-foreground">
               주유소를 누르면 경유 경로
             </span>
