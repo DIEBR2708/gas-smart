@@ -104,7 +104,7 @@ export function CostBreakdown({
             </p>
           </div>
           <Badge variant={isBaseline ? "secondary" : "default"}>
-            {isBaseline ? "가까운 기준" : `${option.rank}위`}
+            {isBaseline ? "기준 경로" : `${option.rank}위`}
           </Badge>
         </div>
 
@@ -173,8 +173,8 @@ export function CostBreakdown({
 
       {isBaseline && (
         <p className="rounded-lg border border-border bg-input/15 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-          경로에서 가장 가까운 주유소입니다. 다른 후보의 이득·손해는 여기 실제
-          지출과 비교합니다. 금액이 낮을수록 좋습니다.
+          기준 경로입니다. 다른 후보의 이득·손해는 여기 실제 지출과 비교합니다.
+          금액이 낮을수록 좋습니다.
         </p>
       )}
 
@@ -182,7 +182,7 @@ export function CostBreakdown({
         <div className="space-y-2 rounded-lg border border-border bg-input/15 p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground">
-              그냥 가까운 {stationHeading(baseline.station.name, baseline.station.brand)}보다
+              기준 경로({stationHeading(baseline.station.name, baseline.station.brand)})보다
             </span>
             <span
               className={cn(

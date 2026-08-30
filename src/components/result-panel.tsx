@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  CheckCircle2,
-  CircleSlash,
-  Info,
-  Route as RouteIcon,
-  ShieldCheck,
-  TrendingDown,
-  TriangleAlert,
-} from "lucide-react";
+import { CircleSlash, ShieldCheck, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -16,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CostBreakdown } from "@/components/cost-breakdown";
 import { FuelTimeline } from "@/components/fuel-timeline";
 import { isUnreachableByCarMessage } from "@/lib/domain/driving-region";
-import type { RankedOption, RefuelPlan, Verdict } from "@/lib/domain/types";
+import type { RankedOption, RefuelPlan } from "@/lib/domain/types";
 import { StationName } from "@/components/station-name";
 import {
   cashCostKrw,
@@ -39,42 +31,6 @@ interface Props {
   fromCache?: boolean;
   cachedAt?: string | null;
 }
-
-const VERDICT_STYLE: Record<
-  Verdict,
-  { icon: typeof Info; tone: string; label: string }
-> = {
-  "detour-worth-it": {
-    icon: TrendingDown,
-    tone: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
-    label: "우회할 가치가 있음",
-  },
-  marginal: {
-    icon: TriangleAlert,
-    tone: "border-amber-500/40 bg-amber-500/10 text-amber-300",
-    label: "오차 범위 안쪽",
-  },
-  "stay-on-route": {
-    icon: CheckCircle2,
-    tone: "border-sky-500/40 bg-sky-500/10 text-sky-300",
-    label: "경로 유지가 최선",
-  },
-  "no-candidates": {
-    icon: CircleSlash,
-    tone: "border-border bg-input/25 text-muted-foreground",
-    label: "후보 없음",
-  },
-  "no-refuel-needed": {
-    icon: CheckCircle2,
-    tone: "border-sky-500/40 bg-sky-500/10 text-sky-300",
-    label: "주유 불필요",
-  },
-  "multi-stop": {
-    icon: RouteIcon,
-    tone: "border-violet-500/40 bg-violet-500/10 text-violet-300",
-    label: "나눠 넣어야 함",
-  },
-};
 
 function compareSaving(option: RankedOption, baseline: RankedOption | null) {
   if (!baseline) return 0;
@@ -126,8 +82,6 @@ export function ResultPanel({
   if (loading && !plan) return <LoadingState />;
   if (!plan) return <LoadingState />;
 
-  const verdict = VERDICT_STYLE[plan.verdict];
-  const VerdictIcon = verdict.icon;
   const selected =
     plan.options.find((o) => o.station.id === selectedId) ?? plan.best;
 
@@ -153,32 +107,6 @@ export function ResultPanel({
           </span>
         </div>
       )}
-      <div className={cn("rounded-xl border p-4", verdict.tone)}>
-        <div className="flex items-center gap-2 text-xs font-semibold tracking-wide uppercase">
-          <VerdictIcon className="size-4" />
-          {verdict.label}
-        </div>
-        <p className="mt-2 text-sm leading-relaxed text-foreground/90">
-          {plan.headline}
-        </p>
-        {plan.best &&
-          (plan.verdict === "detour-worth-it" || plan.verdict === "multi-stop") && (
-          <div className="mt-3 flex items-end gap-3">
-            <div>
-              <span className="font-mono text-3xl leading-none font-semibold text-emerald-300">
-                {krw(cashCostKrw(plan.best))}
-              </span>
-              <div className="mt-1 font-mono text-sm text-foreground/80">
-                {signedMinutes(plan.best.detour.extraDurationS)}
-              </div>
-            </div>
-            <span className="pb-0.5 text-xs text-muted-foreground">
-              실제 지출 · 순위는 시간 여유를 반영한 순서
-            </span>
-          </div>
-        )}
-      </div>
-
       {plan.itinerary.length >= 2 && (
         <div className="space-y-2 rounded-xl border border-violet-500/30 bg-violet-500/5 p-3">
           <div className="flex items-center justify-between gap-2">
@@ -341,7 +269,7 @@ export function ResultPanel({
                             )}
                           >
                             {isBaseline
-                              ? "가까운 기준"
+                              ? "기준 경로"
                               : saving > 50
                                 ? `${krw(saving)} 절약`
                                 : saving < -50
