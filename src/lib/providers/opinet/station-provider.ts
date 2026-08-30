@@ -5,7 +5,7 @@ import {
 import { haversineM } from "@/lib/domain/geo";
 import type { FuelKind, Route, Station } from "@/lib/domain/types";
 import { OPINET_PROD_CODE } from "@/lib/domain/types";
-import { fetchOutbound } from "@/lib/http";
+import { fetchOutbound, mapPool } from "@/lib/http";
 import { kstDateKey } from "./daily-catalog";
 import { startOpinetDailyPrefetch } from "./fetch-queue";
 import type { StationProvider, StationQuery } from "../types";
@@ -60,6 +60,15 @@ export class OpinetStationProvider implements StationProvider {
       await queue.refetchMany(points, query.fuelKind);
       stations = catalog.stationsNear(points, radiusM, query.fuelKind, asOf);
     }
+    if (stations.length === 0 && points.length > 0) {
+      const nearby = catalog.nearestAlong(points, radiusM, asOf, 40);
+      stations = await this.hydrateFuel(nearby, query.fuelKind);
+      for (const station of stations) {
+        const price = station.prices[query.fuelKind];
+        if (price !== undefined) catalog.setFuelPrice(station.id, query.fuelKind, price);
+      }
+      if (stations.length > 0) catalog.scheduleSave();
+    }
     return stations;
   }
 
@@ -91,6 +100,27 @@ export class OpinetStationProvider implements StationProvider {
       });
     }
     return out;
+  }
+
+  private async hydrateFuel(
+    stations: Station[],
+    fuelKind: FuelKind,
+  ): Promise<Station[]> {
+    const filled = await mapPool(stations, 8, async (station) => {
+      if (station.prices[fuelKind] !== undefined) return station;
+      const detail = await this.fetchDetail(station.id);
+      if (!detail) return null;
+      const entry = (detail.OIL_PRICE ?? []).find(
+        (item) => OPINET_PROD_CODE[fuelKind] === item.PRODCD,
+      );
+      const price = Number(entry?.PRICE);
+      if (!Number.isFinite(price) || price <= 0) return null;
+      return {
+        ...station,
+        prices: { ...station.prices, [fuelKind]: price },
+      };
+    });
+    return filled.filter((station): station is Station => station !== null);
   }
 
   private async fetchDetail(uniId: string): Promise<DetailRow | null> {

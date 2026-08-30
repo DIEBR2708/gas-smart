@@ -81,6 +81,23 @@ export class DailyPriceCatalog {
     return n;
   }
 
+  priceCountForFuel(fuelKind: FuelKind): number {
+    let n = 0;
+    for (const station of this.stations.values()) {
+      if (station.prices[fuelKind] !== undefined) n += 1;
+    }
+    return n;
+  }
+
+  setFuelPrice(id: string, fuelKind: FuelKind, price: number): void {
+    const prev = this.stations.get(id);
+    if (!prev || !Number.isFinite(price) || price <= 0) return;
+    this.stations.set(id, {
+      ...prev,
+      prices: { ...prev.prices, [fuelKind]: price },
+    });
+  }
+
   hasCell(id: string): boolean {
     return this.cells.has(id);
   }
@@ -156,6 +173,40 @@ export class DailyPriceCatalog {
       });
     }
     return out;
+  }
+
+  nearestAlong(
+    centers: LatLng[],
+    radiusM: number,
+    priceDay: Date,
+    limit: number,
+  ): Station[] {
+    const updatedAt = priceDay.toISOString();
+    const scored: { d: number; station: Station }[] = [];
+    for (const item of this.stations.values()) {
+      let best = Infinity;
+      for (const center of centers) {
+        const d = haversineM(center, item);
+        if (d < best) best = d;
+      }
+      if (best > radiusM) continue;
+      scored.push({
+        d: best,
+        station: {
+          id: item.id,
+          name: item.name,
+          brand: item.brand,
+          isSelfService: false,
+          lat: item.lat,
+          lng: item.lng,
+          prices: { ...item.prices },
+          priceUpdatedAt: updatedAt,
+          openingHours: { allDay: true },
+        },
+      });
+    }
+    scored.sort((a, b) => a.d - b.d);
+    return scored.slice(0, limit).map((item) => item.station);
   }
 
   missingAmong(

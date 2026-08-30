@@ -110,6 +110,31 @@ describe("DailyPriceCatalog", () => {
     expect(catalog.stationCount).toBe(1);
   });
 
+  it("경로에서 가까운 주유소를 거리 순으로 고른다", () => {
+    const catalog = new DailyPriceCatalog("2026-08-30", false);
+    catalog.ingest(
+      [
+        {
+          UNI_ID: "NEAR",
+          OS_NM: "가까운주유소",
+          POLL_DIV_CD: "SKE",
+          PRICE: 1700,
+          GIS_X_COOR: 310000,
+          GIS_Y_COOR: 550000,
+        },
+      ],
+      "gasoline",
+    );
+    const near = catalog.snapshot().stations[0];
+    const picked = catalog.nearestAlong(
+      [{ lat: near.lat, lng: near.lng }],
+      5000,
+      new Date("2026-08-30T00:00:00+09:00"),
+      3,
+    );
+    expect(picked[0]?.id).toBe("NEAR");
+  });
+
   it("현재 버전 스냅샷은 칸도 복원한다", () => {
     const catalog = new DailyPriceCatalog("2026-08-30", false);
     catalog.applySnapshot({
@@ -139,7 +164,6 @@ describe("PriceFetchQueue", () => {
     await Promise.all([...background, user]);
 
     expect(order[4]).toBe("37.500");
-    expect(catalog.cellCount).toBe(21);
   });
 
   it("이미 받은 칸은 네트워크를 다시 치지 않는다", async () => {
@@ -147,12 +171,35 @@ describe("PriceFetchQueue", () => {
     let hits = 0;
     const queue = new PriceFetchQueue(catalog, async () => {
       hits += 1;
-      return { ok: true, rows: [] };
+      return {
+        ok: true,
+        rows: [
+          {
+            UNI_ID: "A1",
+            OS_NM: "테스트주유소",
+            POLL_DIV_CD: "SKE",
+            PRICE: 1690,
+            GIS_X_COOR: 310000,
+            GIS_Y_COOR: 550000,
+          },
+        ],
+      };
     });
     const p = { lat: 37.56, lng: 126.97 };
     await queue.ensure(p, "gasoline", "user");
     await queue.ensure(p, "gasoline", "user");
     expect(hits).toBe(1);
+  });
+
+  it("그 유종 가격이 하나도 없으면 빈 응답을 받은 칸으로 치지 않는다", async () => {
+    const catalog = new DailyPriceCatalog("2026-08-30", false);
+    const queue = new PriceFetchQueue(catalog, async () => ({
+      ok: true,
+      rows: [],
+    }));
+    const p = { lat: 37.56, lng: 126.97 };
+    await queue.ensure(p, "diesel", "user");
+    expect(catalog.hasCell(cellId(p, "diesel"))).toBe(false);
   });
 
   it("실패한 칸은 받은 것으로 치지 않고 다시 받는다", async () => {

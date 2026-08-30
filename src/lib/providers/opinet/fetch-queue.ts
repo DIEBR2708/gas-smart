@@ -140,8 +140,11 @@ export class PriceFetchQueue {
       const result = await this.fetchAround(job.center, job.fuelKind);
       if (result.ok) {
         this.catalog.ingest(result.rows, job.fuelKind);
-        this.catalog.markFetched(job.center, job.fuelKind);
-        this.catalog.scheduleSave();
+        const known = this.catalog.priceCountForFuel(job.fuelKind) > 0;
+        if (result.rows.length > 0 || known) {
+          this.catalog.markFetched(job.center, job.fuelKind);
+          this.catalog.scheduleSave();
+        }
       }
     } finally {
       this.active -= 1;
