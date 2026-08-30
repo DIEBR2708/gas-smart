@@ -16,6 +16,9 @@ export const FUEL_PREFETCH_ORDER: FuelKind[] = [
   "lpg",
 ];
 
+/** 실패 칸을 성공으로 저장하던 예전 파일을 버리고 다시 받기 위한 버전. */
+export const CATALOG_SCHEMA_VERSION = 2;
+
 export interface CatalogStation {
   id: string;
   name: string;
@@ -27,6 +30,7 @@ export interface CatalogStation {
 
 export interface CatalogSnapshot {
   date: string;
+  version?: number;
   cells: string[];
   stations: CatalogStation[];
 }
@@ -98,6 +102,14 @@ export class DailyPriceCatalog {
     this.fetchCenters.push({ point: center, fuelKind });
   }
 
+  forgetCell(id: string): void {
+    if (!this.cells.delete(id)) return;
+    const index = this.fetchCenters.findIndex(
+      (center) => cellId(center.point, center.fuelKind) === id,
+    );
+    if (index >= 0) this.fetchCenters.splice(index, 1);
+  }
+
   ingest(rows: AroundAllRow[], fuelKind: FuelKind): void {
     for (const row of rows) {
       const price = Number(row.PRICE);
@@ -156,6 +168,11 @@ export class DailyPriceCatalog {
 
   applySnapshot(snapshot: CatalogSnapshot): void {
     if (snapshot.date !== this.date) return;
+    for (const station of snapshot.stations) {
+      this.stations.set(station.id, station);
+    }
+    // 예전 파일은 타임아웃·오류도 받은 칸으로 남겨 경로 조회를 건너뛰었다.
+    if ((snapshot.version ?? 1) < CATALOG_SCHEMA_VERSION) return;
     for (const id of snapshot.cells) {
       this.cells.add(id);
       const [lat, lng, fuel] = id.split(":");
@@ -166,14 +183,12 @@ export class DailyPriceCatalog {
         fuelKind,
       });
     }
-    for (const station of snapshot.stations) {
-      this.stations.set(station.id, station);
-    }
   }
 
   snapshot(): CatalogSnapshot {
     return {
       date: this.date,
+      version: CATALOG_SCHEMA_VERSION,
       cells: [...this.cells],
       stations: [...this.stations.values()],
     };

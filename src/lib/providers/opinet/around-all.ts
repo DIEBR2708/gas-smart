@@ -37,12 +37,23 @@ export function toBrand(code: string): Brand {
   return (known as string[]).includes(code) ? (code as Brand) : "ETC";
 }
 
+export interface AroundAllResult {
+  ok: boolean;
+  rows: AroundAllRow[];
+}
+
+function isSuccessCode(code: string | number | undefined): boolean {
+  if (code === undefined || code === "") return true;
+  const normalized = String(code).trim();
+  return normalized === "200" || normalized === "00" || normalized === "0";
+}
+
 export async function fetchAroundAll(
   certKey: string,
   center: LatLng,
   fuelKind: FuelKind,
   radiusM = 5000,
-): Promise<AroundAllRow[]> {
+): Promise<AroundAllResult> {
   const { x, y } = wgs84ToKatec(center);
   const url = new URL(`${BASE_URL}/aroundAll.do`);
   url.searchParams.set("out", "json");
@@ -54,11 +65,16 @@ export async function fetchAroundAll(
   url.searchParams.set("prodcd", OPINET_PROD_CODE[fuelKind]);
 
   const res = await fetchOutbound(url, { timeoutMs: 6_000 });
-  if (!res.ok) return [];
+  if (!res.ok) return { ok: false, rows: [] };
   try {
-    const json = (await res.json()) as { RESULT?: { OIL?: AroundAllRow[] } };
-    return json.RESULT?.OIL ?? [];
+    const json = (await res.json()) as {
+      RESULT?: { OIL?: AroundAllRow[]; RESULTCODE?: string | number };
+      RESULTCODE?: string | number;
+    };
+    const code = json.RESULT?.RESULTCODE ?? json.RESULTCODE;
+    if (!isSuccessCode(code)) return { ok: false, rows: [] };
+    return { ok: true, rows: json.RESULT?.OIL ?? [] };
   } catch {
-    return [];
+    return { ok: false, rows: [] };
   }
 }

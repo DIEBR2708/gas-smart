@@ -8,15 +8,14 @@ import { OPINET_PROD_CODE } from "@/lib/domain/types";
 import { fetchOutbound } from "@/lib/http";
 import { kstDateKey } from "./daily-catalog";
 import { startOpinetDailyPrefetch } from "./fetch-queue";
-import { koreaPrefetchCenters } from "./korea-grid";
 import type { StationProvider, StationQuery } from "../types";
 
 /**
  * 오피넷(한국석유공사) 유가정보 오픈 API 프로바이더.
  *
- * 당일 유가는 백그라운드에서 전국 격자를 훑어 모아 두고, 경로 검색은
- * 그 목록을 읽는다. 아직 안 받은 칸이 검색 경로에 있으면 그 칸만 먼저
- * 받은 뒤 계산하고, 나머지 수집은 이어서 한다.
+ * 당일 유가는 백그라운드에서 전국 휘발유 격자를 천천히 모아 둔다.
+ * 경로 검색은 그 목록을 읽되, 경로 칸은 항상 사용자 우선으로 먼저 받는다.
+ * 실패한 조회는 받은 칸으로 치지 않는다.
  */
 
 const BASE_URL = "https://www.opinet.co.kr/api";
@@ -50,23 +49,18 @@ export class OpinetStationProvider implements StationProvider {
       plan.searchRadiusM,
     );
     const points = samples.map((s) => s.point);
-    const gridTarget = koreaPrefetchCenters().length;
-    const filledEnough =
-      catalog.cellCountForFuel(query.fuelKind) >= Math.ceil(gridTarget * 0.92);
-
-    if (!filledEnough) {
-      const missing = catalog.missingAmong(points, query.fuelKind, 800);
-      if (missing.length > 0) {
-        await queue.ensureMany(missing, query.fuelKind, "user");
-      }
+    const missing = catalog.missingAmong(points, query.fuelKind, 800);
+    if (missing.length > 0) {
+      await queue.ensureMany(missing, query.fuelKind, "user");
     }
 
-    return catalog.stationsNear(
-      points,
-      radiusM,
-      query.fuelKind,
-      startOfKstDay(),
-    );
+    const asOf = startOfKstDay();
+    let stations = catalog.stationsNear(points, radiusM, query.fuelKind, asOf);
+    if (stations.length === 0 && points.length > 0) {
+      await queue.refetchMany(points, query.fuelKind);
+      stations = catalog.stationsNear(points, radiusM, query.fuelKind, asOf);
+    }
+    return stations;
   }
 
   /**
