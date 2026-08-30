@@ -79,13 +79,16 @@ describe("effectivePricePerLiter", () => {
 });
 
 describe("minArrivalFuelL", () => {
-  it("현재 연료가 예비량 이상이면 예비량이 하한이다", () => {
+  it("현재 연료가 예비량보다 많으면 예비량이 하한이다", () => {
     expect(
       minArrivalFuelL({ ...DEFAULT_VEHICLE, currentFuelL: 9, reserveL: 5 }),
     ).toBe(5);
   });
 
-  it("이미 예비량보다 적으면 0까지 허용한다", () => {
+  it("이미 예비량 이하로 출발하면 0까지 허용한다", () => {
+    expect(
+      minArrivalFuelL({ ...DEFAULT_VEHICLE, currentFuelL: 5, reserveL: 5 }),
+    ).toBe(0);
     expect(
       minArrivalFuelL({ ...DEFAULT_VEHICLE, currentFuelL: 4, reserveL: 5 }),
     ).toBe(0);
@@ -169,7 +172,7 @@ describe("evaluateOption", () => {
     expect(ok.reachable).toBe(true);
   });
 
-  it("이미 예비량보다 적게 출발하면 0L까지는 도달 가능하다", () => {
+  it("이미 예비량 이하로 출발하면 0L까지는 도달 가능하다", () => {
     const c = ctx({
       vehicle: { currentFuelL: 4, reserveL: 5, kmPerLiter: 10 },
     });

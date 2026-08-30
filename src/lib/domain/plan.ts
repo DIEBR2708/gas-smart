@@ -162,7 +162,7 @@ export async function buildRefuelPlan(
       continue;
     }
     // 예비량 아래로 떨어져 도착하는 곳은 후보가 아니다.
-    // 이미 예비량보다 적으면 0L까지만 허용한다.
+    // 이미 예비량 이하면 0L까지만 허용한다.
     const fuelLeftL =
       vehicle.currentFuelL - proj.alongM / 1000 / vehicle.kmPerLiter;
     const arrivalFloorL = minArrivalFuelL(vehicle);

@@ -20,10 +20,11 @@ const EPS = 1e-9;
 
 /**
  * 주유소에 도착할 때 이 잔량 미만이면 후보에서 뺀다.
- * 이미 예비량보다 적게 남긴 채 출발했다면 0L까지는 허용한다.
+ * 이미 예비량 이하로 출발했다면 0L까지는 허용한다. 그렇지 않으면
+ * 예비량과 같은 잔량으로는 한 칸도 못 간다.
  */
 export function minArrivalFuelL(vehicle: Vehicle): number {
-  return vehicle.currentFuelL + EPS >= vehicle.reserveL ? vehicle.reserveL : 0;
+  return vehicle.currentFuelL > vehicle.reserveL + EPS ? vehicle.reserveL : 0;
 }
 
 export interface CostContext {
