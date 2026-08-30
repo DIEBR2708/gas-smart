@@ -89,6 +89,7 @@ describe("buildRefuelPlan", () => {
 
   it("필요한 만큼만 넣으면 재고 선구매분이 생기지 않는다", async () => {
     const result = await plan({
+      vehicle: { currentFuelL: 9 },
       preferences: { fillPolicy: { mode: "toDestination" } },
     });
     for (const option of result.options) {
@@ -270,7 +271,11 @@ describe("가지치기가 최적안을 버리지 않는다", () => {
     routeIndex?: number;
   }[] = [
     { label: "기본" },
-    { label: "필요한 만큼만", preferences: { fillPolicy: { mode: "toDestination" } } },
+    {
+      label: "필요한 만큼만",
+      vehicle: { currentFuelL: 9 },
+      preferences: { fillPolicy: { mode: "toDestination" } },
+    },
     { label: "금액 지정", preferences: { fillPolicy: { mode: "fixedBudget", krw: 50_000 } } },
     { label: "시간 가치 높음", preferences: { timeValueKrwPerMin: 600 } },
     { label: "우회 허용 넓음", preferences: { maxDetourKm: 15, maxDetourMin: 45 } },

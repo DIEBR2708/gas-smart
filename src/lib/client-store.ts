@@ -22,6 +22,7 @@ const KEYS = {
   lastPlan: "cfn.lastPlan",
   session: "cfn.session",
   reserve5Migrated: "cfn.migrated.reserve5",
+  fuel20Migrated: "cfn.migrated.fuel20",
 };
 
 export interface SessionState {
@@ -94,6 +95,13 @@ export function loadSession(): SessionState | null {
         window.localStorage.setItem(KEYS.reserve5Migrated, "1");
         if (session.vehicle.reserveL === 6) {
           session.vehicle = { ...session.vehicle, reserveL: 5 };
+          writeJson(KEYS.session, session);
+        }
+      }
+      if (!window.localStorage.getItem(KEYS.fuel20Migrated)) {
+        window.localStorage.setItem(KEYS.fuel20Migrated, "1");
+        if (session.vehicle.currentFuelL === 9) {
+          session.vehicle = { ...session.vehicle, currentFuelL: 20 };
           writeJson(KEYS.session, session);
         }
       }

@@ -1,12 +1,13 @@
 "use client";
 
-import { CircleSlash, ShieldCheck, TriangleAlert } from "lucide-react";
+import { CircleSlash, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CostBreakdown } from "@/components/cost-breakdown";
 import { FuelTimeline } from "@/components/fuel-timeline";
+import { shouldSuggestSkipRefuel } from "@/lib/domain/cost";
 import { isUnreachableByCarMessage } from "@/lib/domain/driving-region";
 import type { RankedOption, RefuelPlan } from "@/lib/domain/types";
 import { StationName } from "@/components/station-name";
@@ -97,6 +98,15 @@ export function ResultPanel({
 
   return (
     <div className={cn("space-y-5", loading && "opacity-60 transition-opacity")}>
+      {shouldSuggestSkipRefuel(plan.vehicle, plan.route, plan.options) && (
+        <div className="rounded-xl border border-sky-500/40 bg-sky-500/10 px-3 py-2.5 text-sm text-sky-100">
+          <p className="font-medium">주유소 들를 필요 없습니다</p>
+          <p className="mt-1 text-xs leading-relaxed text-sky-100/80">
+            목적지까지 그냥 가도 연료가 남고, 도착지 근처에도 주유소가 있습니다.
+            아래는 그래도 넣고 싶을 때 비교입니다.
+          </p>
+        </div>
+      )}
       {fromCache && (
         <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
@@ -322,8 +332,6 @@ export function ResultPanel({
         </>
       )}
 
-      <SearchScope plan={plan} />
-
       <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
         <Badge variant="outline" className="text-[10px]">
           {plan.meta.stationProvider}
@@ -332,103 +340,6 @@ export function ResultPanel({
           {plan.meta.routeProvider}
         </Badge>
       </div>
-    </div>
-  );
-}
-
-/**
- * 무엇을 봤고 무엇을 보지 않았는지 밝히는 패널.
- *
- * 결과 목록만 보여주면 사용자는 그것이 경로 주변 전수 비교라고 오해한다.
- * 회랑 밖은 조회조차 하지 않고, 조회한 것 중에서도 일부만 정밀 계산한다.
- * 그 경계를 숨기면 안 된다.
- */
-function SearchScope({ plan }: { plan: RefuelPlan }) {
-  const { meta } = plan;
-  const grouped = new Map<string, string[]>();
-  for (const item of plan.excluded) {
-    const list = grouped.get(item.reason) ?? [];
-    list.push(stationHeading(item.station.name, item.station.brand));
-    grouped.set(item.reason, list);
-  }
-  const reasons = [...grouped.entries()].sort((a, b) => b[1].length - a[1].length);
-
-  return (
-    <div className="space-y-2 rounded-lg border border-border bg-input/10 p-3">
-      <h3 className="text-xs font-semibold">이 결과가 본 범위</h3>
-
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-        <dt>조회 회랑</dt>
-        <dd className="text-right font-mono text-foreground/80">
-          경로 좌우 {(meta.corridorHalfWidthM / 1000).toFixed(1)}km
-        </dd>
-        <dt>반경 검색 호출</dt>
-        <dd className="text-right font-mono text-foreground/80">
-          {meta.searchCallCount}회 · 반경 {(meta.searchRadiusM / 1000).toFixed(0)}km
-        </dd>
-        <dt>조회된 주유소</dt>
-        <dd className="text-right font-mono text-foreground/80">
-          {meta.candidateCount}곳
-        </dd>
-        <dt>실제 우회 경로까지 계산</dt>
-        <dd className="text-right font-mono text-foreground/80">
-          {meta.exactlyEvaluated}곳
-        </dd>
-      </dl>
-
-      {meta.corridorTruncated && (
-        <p className="flex gap-1.5 rounded-md bg-amber-500/12 px-2 py-1.5 text-[11px] text-amber-300">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-          <span>
-            우회 허용치가 넓어 경로 좌우{" "}
-            {(meta.requestedHalfWidthM / 1000).toFixed(1)}km까지 봐야 하지만,
-            유가 API의 반경 상한(5km) 때문에{" "}
-            {(meta.corridorHalfWidthM / 1000).toFixed(1)}km까지만 조회했습니다.
-            더 멀리 있는 주유소는 이 목록에 없습니다.
-          </span>
-        </p>
-      )}
-
-      {meta.optimalityGuaranteed ? (
-        <p className="flex gap-1.5 text-[11px] text-muted-foreground">
-          <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-emerald-400" />
-          <span>
-            계산하지 않은 후보는 최소 우회(왕복 직선거리)만 가정해도 1위보다
-            비쌉니다. 회랑 안에서 더 싼 선택은 없습니다.
-          </span>
-        </p>
-      ) : (
-        <p className="flex gap-1.5 rounded-md bg-amber-500/12 px-2 py-1.5 text-[11px] text-amber-300">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-          <span>
-            계산 한도({meta.exactlyEvaluated}곳)에 걸려 남은 후보를 확인하지
-            못했습니다. 더 나은 곳이 있을 수 있습니다.
-          </span>
-        </p>
-      )}
-
-      {reasons.length > 0 && (
-        <details>
-          <summary className="cursor-pointer text-[11px] text-muted-foreground">
-            제외된 {plan.excluded.length}곳을 이유별로 보기
-          </summary>
-          <ul className="mt-2 space-y-2">
-            {reasons.map(([reason, names]) => (
-              <li key={reason}>
-                <div className="flex justify-between gap-2 text-[11px]">
-                  <span className="text-foreground/80">{reason}</span>
-                  <span className="shrink-0 font-mono text-muted-foreground">
-                    {names.length}곳
-                  </span>
-                </div>
-                <p className="text-[10px] leading-relaxed text-muted-foreground/70">
-                  {names.join(", ")}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
     </div>
   );
 }

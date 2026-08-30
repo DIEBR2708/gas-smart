@@ -5,6 +5,7 @@ import {
   evaluateOption,
   litersRequiredForTrip,
   minArrivalFuelL,
+  shouldSuggestSkipRefuel,
   median,
   type CostContext,
 } from "./cost";
@@ -95,6 +96,38 @@ describe("minArrivalFuelL", () => {
   });
 });
 
+describe("shouldSuggestSkipRefuel", () => {
+  it("목적지까지 여유가 있고 도착지 근처에 후보가 있으면 참이다", () => {
+    expect(
+      shouldSuggestSkipRefuel(
+        { ...DEFAULT_VEHICLE, currentFuelL: 40, kmPerLiter: 10, reserveL: 5 },
+        straightRoute(100),
+        [{ detour: { alongRouteM: 90_000 } }],
+      ),
+    ).toBe(true);
+  });
+
+  it("겨우 예비만 남기면 들르지 말라고 하지 않는다", () => {
+    expect(
+      shouldSuggestSkipRefuel(
+        { ...DEFAULT_VEHICLE, currentFuelL: 16, kmPerLiter: 10, reserveL: 5 },
+        straightRoute(100),
+        [{ detour: { alongRouteM: 90_000 } }],
+      ),
+    ).toBe(false);
+  });
+
+  it("도착지 근처에 주유소가 없으면 들르지 말라고 하지 않는다", () => {
+    expect(
+      shouldSuggestSkipRefuel(
+        { ...DEFAULT_VEHICLE, currentFuelL: 40, kmPerLiter: 10, reserveL: 5 },
+        straightRoute(100),
+        [{ detour: { alongRouteM: 20_000 } }],
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("litersRequiredForTrip", () => {
   it("현재 연료와 예비량을 반영한다", () => {
     // 100km / 10km/L = 10L 필요, 예비 6L, 보유 4L -> 12L
@@ -137,7 +170,7 @@ describe("evaluateOption", () => {
 
   it("우회로 태우는 연료가 주입량에 반영된다", () => {
     const c = ctx({
-      vehicle: { kmPerLiter: 10 },
+      vehicle: { kmPerLiter: 10, currentFuelL: 9 },
       preferences: { fillPolicy: { mode: "toDestination" } },
     });
     const near = evaluateOption(testStation(), testDetour(), c)!;

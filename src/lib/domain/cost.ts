@@ -69,6 +69,27 @@ export function effectivePricePerLiter(
   return Math.max(0, afterFlat * (1 - Math.min(rate, 1)));
 }
 
+/** 목적지 도착 후에도 예비량 위로 이만큼은 남아야 "많이 남는다"고 본다. */
+const SKIP_REFUEL_EXTRA_L = 8;
+
+/**
+ * 그냥 가도 연료가 여유 있고, 도착지 근처에 주유소가 있으면
+ * 이번 구간은 들르지 않아도 된다고 알려도 된다. 목록은 그대로 둔다.
+ */
+export function shouldSuggestSkipRefuel(
+  vehicle: Vehicle,
+  route: Route,
+  options: { detour: { alongRouteM: number } }[],
+): boolean {
+  const leftL =
+    vehicle.currentFuelL - route.distanceM / 1000 / vehicle.kmPerLiter;
+  if (leftL + EPS < vehicle.reserveL + SKIP_REFUEL_EXTRA_L) return false;
+  const windowM = Math.min(30_000, Math.max(15_000, route.distanceM * 0.25));
+  return options.some(
+    (option) => route.distanceM - option.detour.alongRouteM <= windowM,
+  );
+}
+
 /** 우회 없이 그대로 달렸을 때 목적지에서 예비량을 남기기 위해 필요한 주유량 (L). */
 export function litersRequiredForTrip(
   vehicle: Vehicle,

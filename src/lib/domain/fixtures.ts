@@ -12,7 +12,7 @@ export const DEFAULT_VEHICLE: Vehicle = {
   fuelKind: "gasoline",
   kmPerLiter: 11.5,
   tankCapacityL: 60,
-  currentFuelL: 9,
+  currentFuelL: 20,
   reserveL: 5,
 };
 

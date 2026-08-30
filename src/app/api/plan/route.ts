@@ -88,7 +88,7 @@ function parseVehicle(input: Partial<Vehicle> | undefined): Vehicle {
     fuelKind,
     kmPerLiter: clamp(Number(input?.kmPerLiter), 3, 40, 11.5),
     tankCapacityL,
-    currentFuelL: clamp(Number(input?.currentFuelL), 0, tankCapacityL, 14),
+    currentFuelL: clamp(Number(input?.currentFuelL), 0, tankCapacityL, 20),
     reserveL: clamp(Number(input?.reserveL), 0, tankCapacityL, 5),
   };
 }
