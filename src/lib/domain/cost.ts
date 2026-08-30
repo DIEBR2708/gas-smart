@@ -291,14 +291,24 @@ export function evaluateOption(
     });
   }
 
-  if (station.accessHint?.oppositeSide) {
+  if (station.accessHint?.oppositeSide && station.accessHint.requiresHighwayExit) {
     warnings.push({
       code: "opposite-side",
       severity: "warn",
-      message: "진행 방향 반대편입니다. 회차 구간이 필요합니다.",
+      message:
+        "반대편 차로입니다. 여기서 유턴할 수 없어 나들목까지 돌아 계산했습니다.",
+    });
+  } else if (station.accessHint?.oppositeSide) {
+    warnings.push({
+      code: "opposite-side",
+      severity: "warn",
+      message: "진행 방향 반대편입니다. 교차로에서 돌아가야 할 수 있습니다.",
     });
   }
-  if (station.accessHint?.requiresHighwayExit) {
+  if (
+    station.accessHint?.requiresHighwayExit &&
+    !station.accessHint.oppositeSide
+  ) {
     warnings.push({
       code: "highway-exit",
       severity: "warn",

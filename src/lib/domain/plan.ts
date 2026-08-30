@@ -8,6 +8,7 @@ import {
   median,
   type CostContext,
 } from "./cost";
+import { rejectIllegalUturn, withAccessHint } from "./access";
 import { planCorridorSearch } from "./corridor";
 import {
   cumulativeDistances,
@@ -176,7 +177,15 @@ export async function buildRefuelPlan(
       });
       continue;
     }
-    surviving.push({ station, proj });
+    const hinted = withAccessHint(station, proj, route);
+    if (
+      preferences.avoidHighwayExit &&
+      hinted.accessHint?.requiresHighwayExit
+    ) {
+      excluded.push({ station: hinted, reason: "고속도로 진출이 필요해 제외됨" });
+      continue;
+    }
+    surviving.push({ station: hinted, proj });
   }
 
   // 경로 주변 시세. 남는 연료의 가치와 부족분 조달 비용을 여기에 맞춘다.
@@ -233,6 +242,7 @@ export async function buildRefuelPlan(
       const lowerBound = evaluateOption(s.station, minimalDetour, ctx);
       return {
         station: s.station,
+        proj: s.proj,
         lowerBoundKrw: lowerBound
           ? lowerBound.normalizedCostKrw
           : Number.POSITIVE_INFINITY,
@@ -296,9 +306,10 @@ export async function buildRefuelPlan(
       batch.map((b) => b.station),
     );
 
-    for (const { station } of batch) {
-      const detour = detours.get(station.id);
-      if (!detour) continue;
+    for (const { station, proj } of batch) {
+      const rawDetour = detours.get(station.id);
+      if (!rawDetour) continue;
+      const detour = rejectIllegalUturn(rawDetour, proj, station, route);
 
       if (detour.extraDistanceM / 1000 > preferences.maxDetourKm) {
         excluded.push({
