@@ -254,4 +254,6 @@
 .thin-scroll {
   scrollbar-width: thin;
   scrollbar-color: oklch(0.4 0.03 262) transparent;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }

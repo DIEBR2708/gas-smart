@@ -31,12 +31,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`dark ${sans.variable} ${mono.variable} h-full antialiased`}
     >
       {/*
-        데스크톱에서는 앱 셸을 뷰포트 높이에 고정한다. 높이가 정해지지 않으면
-        사이드바의 overflow-y-auto가 스크롤되지 않고 그대로 늘어나면서,
-        같은 행에 있는 지도까지 사이드바 콘텐츠 높이만큼 끌려간다.
-        모바일에서는 문서 스크롤이 자연스러우므로 고정하지 않는다.
+        앱 셸을 뷰포트 높이에 고정한다. 높이가 정해지지 않으면 아래 패널이
+        문서째로 늘어나고, 위쪽 지도가 스크롤과 함께 화면 밖으로 나간다.
       */}
-      <body className="flex min-h-full flex-col lg:h-dvh lg:overflow-hidden">
+      <body className="flex h-dvh flex-col overflow-hidden">
         <TooltipProvider delay={200}>{children}</TooltipProvider>
       </body>
     </html>

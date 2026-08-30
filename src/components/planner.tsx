@@ -207,7 +207,7 @@ export function Planner({ routes }: Props) {
         .finally(() => {
           if (seq === requestSeq.current) setLoading(false);
         });
-    }, 350);
+    }, 120);
 
     return () => {
       clearTimeout(timer);
@@ -281,8 +281,8 @@ export function Planner({ routes }: Props) {
   const isSample = data?.dataMode !== "live";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 lg:px-6">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 lg:px-6">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/15 text-primary">
             <MapIcon className="size-4" />
@@ -327,8 +327,8 @@ export function Planner({ routes }: Props) {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <div className="relative h-[42vh] min-h-[260px] shrink-0 lg:h-auto lg:min-h-0 lg:flex-1">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+        <div className="relative h-[42dvh] min-h-[220px] shrink-0 lg:h-auto lg:min-h-0 lg:flex-1">
           <RouteMap
             route={displayRoute}
             options={plan?.options ?? []}
@@ -389,7 +389,7 @@ export function Planner({ routes }: Props) {
           </div>
         </div>
 
-        <aside className="flex min-h-0 w-full flex-col border-t border-border lg:w-[420px] lg:border-t-0 lg:border-l xl:w-[460px]">
+        <aside className="flex min-h-0 w-full flex-1 flex-col overflow-hidden border-t border-border lg:w-[420px] lg:flex-none lg:border-t-0 lg:border-l xl:w-[460px]">
           <div className="flex shrink-0 gap-1 border-b border-border p-2">
             <TabButton
               active={tab === "result"}
@@ -407,7 +407,7 @@ export function Planner({ routes }: Props) {
             </TabButton>
           </div>
 
-          <div className="thin-scroll min-h-0 flex-1 overflow-y-auto p-4">
+          <div className="thin-scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-4">
             {tab === "result" ? (
               <ResultPanel
                 plan={plan}
