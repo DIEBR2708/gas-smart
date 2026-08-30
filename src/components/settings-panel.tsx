@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Clock, CreditCard, Fuel, SlidersHorizontal } from "lucide-react";
 import { DiscountEditor } from "@/components/discount-editor";
 import { Input } from "@/components/ui/input";
@@ -153,6 +154,75 @@ function num(value: number | readonly number[]): number {
   return Array.isArray(value) ? value[0] : (value as number);
 }
 
+function clampMinutes(value: number): number {
+  return Math.min(60, Math.max(1, Math.round(value)));
+}
+
+function MinutesControl({
+  minutes,
+  onChange,
+}: {
+  minutes: number;
+  onChange: (minutes: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(minutes));
+  useEffect(() => {
+    setDraft(String(minutes));
+  }, [minutes]);
+
+  const commit = (raw: string) => {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+      setDraft(String(minutes));
+      return;
+    }
+    const next = clampMinutes(parsed);
+    setDraft(String(next));
+    onChange(next);
+  };
+
+  return (
+    <div className="flex items-center gap-3">
+      <Slider
+        className="min-w-0 flex-1"
+        value={[minutes]}
+        min={1}
+        max={60}
+        step={1}
+        onValueChange={(value) => onChange(clampMinutes(num(value)))}
+      />
+      <div className="flex shrink-0 items-center gap-1.5">
+        <Input
+          className="h-10 w-16 text-center text-base tabular-nums"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          enterKeyHint="done"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          aria-label="시간 여유 분"
+          value={draft}
+          onChange={(event) => {
+            const raw = event.target.value.replace(/\D/g, "").slice(0, 2);
+            setDraft(raw);
+            const parsed = Number(raw);
+            if (raw && parsed >= 1 && parsed <= 60) onChange(parsed);
+          }}
+          onBlur={() => commit(draft)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur();
+            }
+          }}
+        />
+        <span className="text-sm text-muted-foreground">분</span>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsPanel({
   vehicle,
   preferences,
@@ -168,9 +238,8 @@ export function SettingsPanel({
       <section className="space-y-3">
         <SectionTitle icon={Clock}>시간 여유</SectionTitle>
         <Field
-          label="시간 여유"
-          value={TIME_PACE[timePaceFromKrw(preferences.timeValueKrwPerMin)].label}
-          hint="순위를 매길 때만 우회 시간을 돈으로 환산합니다. 목록에 보이는 금액은 실제로 쓰는 돈이고, 시간은 그 아래 +5분처럼 따로 적습니다."
+          label="순위 기준"
+          hint="촉박·적당·여유는 우회 시간을 얼마나 비싸게 볼지입니다. 실제 허용 시간은 아래 분에서 정합니다."
         >
           <div className="grid grid-cols-3 gap-1.5">
             {TIME_PACE_ORDER.map((pace) => {
@@ -203,6 +272,16 @@ export function SettingsPanel({
               );
             })}
           </div>
+        </Field>
+        <Field
+          label="실제 시간"
+          value={`${preferences.maxDetourMin}분`}
+          hint="우회로 쓸 수 있는 시간입니다. 슬라이더나 오른쪽 칸에 1–60분을 입력하세요. 모바일에서는 숫자 키패드가 열립니다."
+        >
+          <MinutesControl
+            minutes={preferences.maxDetourMin}
+            onChange={(maxDetourMin) => onPreferencesChange({ maxDetourMin })}
+          />
         </Field>
       </section>
 
@@ -411,36 +490,20 @@ export function SettingsPanel({
 
       <section className="space-y-4">
         <SectionTitle icon={SlidersHorizontal}>우회와 절약 기준</SectionTitle>
-        <div className="grid grid-cols-2 gap-4">
-          <Field
-            label="최대 우회 거리"
-            value={`${preferences.maxDetourKm.toFixed(1)}km`}
-          >
-            <Slider
-              value={[preferences.maxDetourKm]}
-              min={0.5}
-              max={20}
-              step={0.5}
-              onValueChange={(value) =>
-                onPreferencesChange({ maxDetourKm: num(value) })
-              }
-            />
-          </Field>
-          <Field
-            label="최대 우회 시간"
-            value={`${preferences.maxDetourMin}분`}
-          >
-            <Slider
-              value={[preferences.maxDetourMin]}
-              min={2}
-              max={60}
-              step={1}
-              onValueChange={(value) =>
-                onPreferencesChange({ maxDetourMin: num(value) })
-              }
-            />
-          </Field>
-        </div>
+        <Field
+          label="최대 우회 거리"
+          value={`${preferences.maxDetourKm.toFixed(1)}km`}
+        >
+          <Slider
+            value={[preferences.maxDetourKm]}
+            min={0.5}
+            max={20}
+            step={0.5}
+            onValueChange={(value) =>
+              onPreferencesChange({ maxDetourKm: num(value) })
+            }
+          />
+        </Field>
 
         <Field
           label="이 금액 미만은 절약으로 보지 않음"
