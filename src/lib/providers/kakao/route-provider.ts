@@ -103,13 +103,6 @@ export class KakaoRouteProvider implements RouteProvider {
 
   private lastFailure: string | null = null;
 
-  private headers(): HeadersInit {
-    return {
-      Authorization: `KakaoAK ${this.restApiKey}`,
-      "Content-Type": "application/json",
-    };
-  }
-
   private futureDepartureParam(): string | null {
     const departAt = this.options.departAt;
     if (!departAt) return null;
@@ -146,66 +139,101 @@ export class KakaoRouteProvider implements RouteProvider {
     polyline: LatLng[];
     includesTraffic: boolean;
   } | null> {
-    const departure =
-      KakaoRouteProvider.futureDisabled ? null : this.futureDepartureParam();
-    if (departure) {
-      const future = await this.requestOnce(
-        FUTURE_DIRECTIONS_URL,
+    if (waypoint) {
+      const via = await this.requestOnce({
         origin,
         destination,
         waypoint,
-        departure,
-      );
-      if (future) return { ...future, includesTraffic: true };
-      KakaoRouteProvider.futureDisabled = true;
+        roadDetails: false,
+        timeoutMs: 6_000,
+      });
+      return via ? { ...via, includesTraffic: false } : null;
     }
-    const live = await this.requestOnce(
-      DIRECTIONS_URL,
+
+    // 본선은 일반 길찾기를 먼저 친다. 미래길찾기를 먼저 치면 권한·시간 초과만
+    // 나고 실도로를 직선으로 바꿔 버린다.
+    let live =
+      (await this.requestOnce({
+        origin,
+        destination,
+        roadDetails: true,
+        timeoutMs: 15_000,
+      })) ??
+      (await this.requestOnce({
+        origin,
+        destination,
+        roadDetails: false,
+        timeoutMs: 12_000,
+      }));
+    if (!live) return null;
+
+    const departure =
+      KakaoRouteProvider.futureDisabled ? null : this.futureDepartureParam();
+    if (!departure) return { ...live, includesTraffic: false };
+
+    const future = await this.requestOnce({
       origin,
       destination,
-      waypoint,
-    );
-    return live ? { ...live, includesTraffic: false } : null;
+      roadDetails: true,
+      timeoutMs: 8_000,
+      departureTime: departure,
+      base: FUTURE_DIRECTIONS_URL,
+    });
+    if (future) return { ...future, includesTraffic: true };
+    KakaoRouteProvider.futureDisabled = true;
+    return { ...live, includesTraffic: false };
   }
 
-  private async requestOnce(
-    base: string,
-    origin: LatLng,
-    destination: LatLng,
-    waypoint?: LatLng,
-    departureTime?: string,
-  ): Promise<{
+  private async requestOnce(input: {
+    origin: LatLng;
+    destination: LatLng;
+    waypoint?: LatLng;
+    roadDetails: boolean;
+    timeoutMs: number;
+    departureTime?: string;
+    base?: string;
+  }): Promise<{
     distanceM: number;
     durationS: number;
     tollKrw: number;
     polyline: LatLng[];
   } | null> {
-    const url = new URL(base);
-    url.searchParams.set("origin", `${origin.lng},${origin.lat}`);
-    url.searchParams.set("destination", `${destination.lng},${destination.lat}`);
-    if (waypoint) {
-      url.searchParams.set("waypoints", `${waypoint.lng},${waypoint.lat}`);
+    const url = new URL(input.base ?? DIRECTIONS_URL);
+    url.searchParams.set("origin", `${input.origin.lng},${input.origin.lat}`);
+    url.searchParams.set(
+      "destination",
+      `${input.destination.lng},${input.destination.lat}`,
+    );
+    if (input.waypoint) {
+      url.searchParams.set(
+        "waypoints",
+        `${input.waypoint.lng},${input.waypoint.lat}`,
+      );
     }
     url.searchParams.set("priority", this.options.priority ?? "RECOMMEND");
     url.searchParams.set("car_fuel", FUEL_PARAM[this.options.fuelKind]);
     url.searchParams.set("car_hipass", String(this.options.hipass ?? true));
     url.searchParams.set("alternatives", "false");
-    // 본선만 형상이 필요하다. 경유 요청에 road_details를 켜면 응답이 커지고
-    // 수십 후보에서 초 단위로 늘어난다. 경유 선은 본선+진입 근사로 그린다.
-    url.searchParams.set("road_details", waypoint ? "false" : "true");
-    if (departureTime) {
-      url.searchParams.set("departure_time", departureTime);
+    url.searchParams.set("road_details", input.roadDetails ? "true" : "false");
+    if (input.departureTime) {
+      url.searchParams.set("departure_time", input.departureTime);
     }
 
     const res = await fetchOutbound(url, {
-      headers: this.headers() as Record<string, string>,
-      timeoutMs: 6_000,
+      headers: { Authorization: `KakaoAK ${this.restApiKey}` },
+      timeoutMs: input.timeoutMs,
     });
     if (!res.ok) {
       this.lastFailure = `http-${res.status}`;
       return null;
     }
-    const json = (await res.json()) as KakaoRouteResponse;
+    let json: KakaoRouteResponse;
+    try {
+      json = (await res.json()) as KakaoRouteResponse;
+    } catch {
+      this.lastFailure = "parse";
+      return null;
+    }
     const route = json.routes?.[0];
     if (!route || route.result_code !== 0 || !route.summary) {
       this.lastFailure = `code-${route?.result_code ?? "empty"}`;

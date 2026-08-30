@@ -22,6 +22,9 @@ describe("interpolateRoute", () => {
     expect(
       noteKakaoRouteFailure(route, "http-429").summary,
     ).toContain("일일 한도");
+    expect(
+      noteKakaoRouteFailure(route, "http-599").summary,
+    ).toContain("시간 초과");
   });
 
   it("제주로 가는 직선은 만들지 않는다", () => {

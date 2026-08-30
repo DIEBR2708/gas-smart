@@ -45,7 +45,11 @@ export function noteKakaoRouteFailure(route: Route, code: string): Route {
       ? "카카오 일일 한도 또는 권한 오류"
       : code === "http-401"
         ? "카카오 REST 키 오류"
-        : "카카오 길찾기 실패";
+        : code === "http-599"
+          ? "카카오 응답이 늦어 시간 초과"
+          : code.startsWith("code-")
+            ? "이 구간 자동차 경로를 찾지 못함"
+            : "카카오 길찾기 실패";
   return {
     ...route,
     summary: `직선 근사 경로 (실도로 아님 · ${detail})`,

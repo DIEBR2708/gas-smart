@@ -7,6 +7,7 @@ import {
 } from "@/lib/domain/driving-region";
 import {
   interpolateRoute,
+  isStraightFallbackRoute,
   noteKakaoRouteFailure,
 } from "@/lib/domain/route-build";
 import { buildRefuelPlan } from "@/lib/domain/plan";
@@ -228,11 +229,14 @@ export async function POST(request: Request) {
   }
 
   const cached = planResponseCache.get(cacheKey);
-  const cachedPlan = cached?.payload as { plan?: { options?: unknown[] } } | undefined;
+  const cachedPlan = cached?.payload as
+    | { plan?: { options?: unknown[]; route?: { summary?: string } } }
+    | undefined;
   if (
     cached &&
     Date.now() - cached.at < PLAN_CACHE_TTL_MS &&
-    (cachedPlan?.plan?.options?.length ?? 0) > 0
+    (cachedPlan?.plan?.options?.length ?? 0) > 0 &&
+    !isStraightFallbackRoute(cachedPlan?.plan?.route ?? {})
   ) {
     return NextResponse.json(cached.payload);
   }
@@ -295,7 +299,7 @@ export async function POST(request: Request) {
           ? "sample"
           : "live",
     };
-    if (plan.options.length > 0) {
+    if (plan.options.length > 0 && !isStraightFallbackRoute(plan.route)) {
       if (planResponseCache.size > 80) {
         const now = Date.now();
         for (const [key, entry] of planResponseCache) {
