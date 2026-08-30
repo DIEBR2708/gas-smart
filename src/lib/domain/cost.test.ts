@@ -280,13 +280,14 @@ describe("evaluateOption", () => {
     );
   });
 
-  it("같은 시세라면 가득 주유와 필요량 주유의 실질 비용이 같다", () => {
-    // 정규화가 제대로 되어 있는지 판별하는 핵심 불변식.
+  it("같은 시세라면 목표 잔량 위로 더 넣은 만큼만 자산으로 상계된다", () => {
     // 남는 연료를 자산으로 상계하지 않으면 '가득'이 항상 비싸 보이는 왜곡이 생긴다.
+    // '필요한 만큼'은 탱크 20%를 필수 잔량으로 보므로, 그 차이는 비용으로 남는다.
     const preferences = { ...DEFAULT_PREFERENCES, cardDiscountKrwPerL: 0 };
     const reference = 1700;
+    const vehicle = { ...DEFAULT_VEHICLE, kmPerLiter: 10, currentFuelL: 10 };
     const base = {
-      vehicle: { ...DEFAULT_VEHICLE, kmPerLiter: 10, currentFuelL: 10 },
+      vehicle,
       route: straightRoute(150),
       referencePriceKrwPerL: reference,
       departAt: DEPART_AT,
@@ -301,8 +302,10 @@ describe("evaluateOption", () => {
     })!;
 
     expect(full.litersToBuy).toBeGreaterThan(toDestination.litersToBuy);
-    expect(full.normalizedCostKrw).toBeCloseTo(
-      toDestination.normalizedCostKrw,
+    const holdGapL =
+      destinationHoldL(vehicle, { mode: "toDestination" }) - vehicle.reserveL;
+    expect(toDestination.normalizedCostKrw - full.normalizedCostKrw).toBeCloseTo(
+      reference * holdGapL,
       4,
     );
   });
