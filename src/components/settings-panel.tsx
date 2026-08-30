@@ -1,17 +1,7 @@
 "use client";
 
-import {
-  Clock,
-  CreditCard,
-  Fuel,
-  Gauge,
-  Route as RouteIcon,
-  SlidersHorizontal,
-} from "lucide-react";
+import { Clock, CreditCard, Fuel, SlidersHorizontal } from "lucide-react";
 import { DiscountEditor } from "@/components/discount-editor";
-import { FillRecords } from "@/components/fill-records";
-import { PlaceSearch } from "@/components/place-search";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -22,19 +12,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type {
-  Brand,
-  FillPolicy,
-  FillRecord,
-  FuelKind,
-  NamedPlace,
-  Preferences,
-  Route,
-  Vehicle,
-} from "@/lib/domain/types";
-import { BRAND_LABEL, FUEL_KIND_LABEL } from "@/lib/domain/types";
+import type { FillPolicy, FuelKind, Preferences, Vehicle } from "@/lib/domain/types";
+import { FUEL_KIND_LABEL } from "@/lib/domain/types";
 import { TIME_PACE, TIME_PACE_ORDER, timePaceFromKrw } from "@/lib/domain/time-pace";
-import { fromSeoulInputValue, krw, liters, toSeoulInputValue } from "@/lib/format";
+import { krw, liters } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const FUEL_KINDS: FuelKind[] = ["gasoline", "diesel", "premium", "lpg"];
@@ -62,25 +43,11 @@ const FILL_MODES: { mode: FillPolicy["mode"]; label: string; hint: string }[] = 
   },
 ];
 
-const BRANDS: Brand[] = ["SKE", "GSC", "HDO", "SOL", "RTE", "NHO", "ETC"];
-
 interface Props {
-  routes: Route[];
-  routeId: string;
-  origin: NamedPlace | null;
-  destination: NamedPlace | null;
-  departAt: Date;
   vehicle: Vehicle;
   preferences: Preferences;
-  fills: FillRecord[];
-  onRouteChange: (id: string) => void;
-  onOriginChange: (place: NamedPlace) => void;
-  onDestinationChange: (place: NamedPlace) => void;
-  onDepartAtChange: (date: Date) => void;
   onVehicleChange: (patch: Partial<Vehicle>) => void;
   onPreferencesChange: (patch: Partial<Preferences>) => void;
-  onFillsChange: (records: FillRecord[]) => void;
-  onUserLocation?: (lat: number, lng: number) => void;
 }
 
 function SectionTitle({
@@ -186,30 +153,11 @@ function num(value: number | readonly number[]): number {
   return Array.isArray(value) ? value[0] : (value as number);
 }
 
-function seoulTodayAt(hour: number, minute: number): Date {
-  const now = toSeoulInputValue(new Date()).slice(0, 10);
-  return fromSeoulInputValue(
-    `${now}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
-  );
-}
-
 export function SettingsPanel({
-  routes,
-  routeId,
-  origin,
-  destination,
-  departAt,
   vehicle,
   preferences,
-  fills,
-  onRouteChange,
-  onOriginChange,
-  onDestinationChange,
-  onDepartAtChange,
   onVehicleChange,
   onPreferencesChange,
-  onFillsChange,
-  onUserLocation,
 }: Props) {
   const tankPercent = Math.round(
     (vehicle.currentFuelL / vehicle.tankCapacityL) * 100,
@@ -218,103 +166,78 @@ export function SettingsPanel({
   return (
     <div className="space-y-6">
       <section className="space-y-3">
-        <SectionTitle icon={RouteIcon}>경로</SectionTitle>
-        <PlaceSearch
-          id="origin"
-          label="출발"
-          value={origin}
-          onChange={onOriginChange}
-          allowGeolocation
-          onLocated={onUserLocation}
-        />
-        <PlaceSearch
-          id="destination"
-          label="도착"
-          value={destination}
-          onChange={onDestinationChange}
-          allowGeolocation
-          onLocated={onUserLocation}
-        />
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
-          지명·도로명으로 검색하거나 현재 위치를 쓰세요. 미리보기에서 위치가
-          막히면 지도 위 검색창의 「지도에서」를 누른 뒤 지도를 찍으면 됩니다.
-          아래 샘플 경로는 출발·도착을 한 번에 채웁니다.
-        </p>
-        <div className="space-y-1.5">
-          {routes.map((route) => {
-            const active = route.id === routeId;
-            return (
-              <button
-                key={route.id}
-                type="button"
-                onClick={() => onRouteChange(route.id)}
-                className={cn(
-                  "w-full rounded-lg border px-3 py-2 text-left transition-colors",
-                  active
-                    ? "border-primary/70 bg-primary/10"
-                    : "border-border bg-input/20 hover:bg-input/40",
-                )}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium">
-                    {route.origin.name} → {route.destination.name}
+        <SectionTitle icon={Clock}>시간 여유</SectionTitle>
+        <Field
+          label="시간 여유"
+          value={TIME_PACE[timePaceFromKrw(preferences.timeValueKrwPerMin)].label}
+          hint="순위를 매길 때만 우회 시간을 돈으로 환산합니다. 목록에 보이는 금액은 실제로 쓰는 돈이고, 시간은 그 아래 +5분처럼 따로 적습니다."
+        >
+          <div className="grid grid-cols-3 gap-1.5">
+            {TIME_PACE_ORDER.map((pace) => {
+              const meta = TIME_PACE[pace];
+              const active =
+                timePaceFromKrw(preferences.timeValueKrwPerMin) === pace;
+              return (
+                <button
+                  key={pace}
+                  type="button"
+                  onClick={() =>
+                    onPreferencesChange({ timeValueKrwPerMin: meta.krwPerMin })
+                  }
+                  className={cn(
+                    "rounded-lg border px-2 py-2 text-xs transition-colors",
+                    active
+                      ? "border-primary/70 bg-primary/15 text-primary"
+                      : "border-border bg-input/20 text-muted-foreground hover:bg-input/40 hover:text-foreground",
+                  )}
+                >
+                  <span className="block font-medium">{meta.label}</span>
+                  <span className="mt-0.5 block text-[10px] leading-snug opacity-80">
+                    {pace === "rushed"
+                      ? "가까운 곳 우선"
+                      : pace === "relaxed"
+                        ? "싼 곳 우선"
+                        : "균형"}
                   </span>
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {(route.distanceM / 1000).toFixed(0)}km
-                  </span>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {route.summary}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <Separator />
-
-      <section className="space-y-3">
-        <SectionTitle icon={Clock}>출발 시각</SectionTitle>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          평일 출퇴근이면 우회 시간과 도착 시각을 정체 배수로 늘립니다. 카카오
-          키가 있고 출발이 10분 뒤~48시간 안이면 미래운행정보 길찾기를 먼저
-          칩니다.
-        </p>
-        <Input
-          type="datetime-local"
-          value={toSeoulInputValue(departAt)}
-          onChange={(event) => {
-            const next = fromSeoulInputValue(event.target.value);
-            if (!Number.isNaN(next.getTime())) onDepartAtChange(next);
-          }}
-        />
-        <div className="flex flex-wrap gap-1.5">
-          {(
-            [
-              { label: "지금", date: new Date() },
-              { label: "출근 08:00", date: seoulTodayAt(8, 0) },
-              { label: "퇴근 18:00", date: seoulTodayAt(18, 0) },
-            ] as const
-          ).map((chip) => (
-            <button
-              key={chip.label}
-              type="button"
-              onClick={() => onDepartAtChange(chip.date)}
-              className="rounded-md border border-border bg-input/20 px-2 py-1 text-[11px] text-muted-foreground hover:bg-input/40 hover:text-foreground"
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
+                </button>
+              );
+            })}
+          </div>
+        </Field>
       </section>
 
       <Separator />
 
       <section className="space-y-4">
-        <SectionTitle icon={Gauge}>차량</SectionTitle>
+        <SectionTitle icon={Fuel}>차량·주유</SectionTitle>
 
-        <Field label="유종">
+        <div className="space-y-3 rounded-lg border border-border bg-input/15 p-3">
+          <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+            <span>셀프 주유소만 보기</span>
+            <Switch
+              checked={preferences.selfServiceOnly}
+              onCheckedChange={(checked) =>
+                onPreferencesChange({ selfServiceOnly: checked })
+              }
+            />
+          </label>
+          <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+            <span>
+              고속도로 진출 회피
+              <span className="block text-xs text-muted-foreground">
+                본선을 벗어나면 통행료와 시간이 크게 늘어납니다
+              </span>
+            </span>
+            <Switch
+              checked={preferences.avoidHighwayExit}
+              onCheckedChange={(checked) =>
+                onPreferencesChange({ avoidHighwayExit: checked })
+              }
+            />
+          </label>
+        </div>
+
+        <Field label="차량 유종">
           <Segmented
             options={FUEL_KINDS.map((kind) => ({
               value: kind,
@@ -324,6 +247,66 @@ export function SettingsPanel({
             onChange={(fuelKind) => onVehicleChange({ fuelKind })}
           />
         </Field>
+
+        <Field
+          label="기름 얼마나 넣을지"
+          hint={
+            FILL_MODES.find((m) => m.mode === preferences.fillPolicy.mode)?.hint
+          }
+        >
+          <Segmented
+            options={FILL_MODES.map((m) => ({
+              value: m.mode,
+              label: m.label,
+              hint: m.hint,
+            }))}
+            value={preferences.fillPolicy.mode}
+            onChange={(mode) => {
+              const next: FillPolicy =
+                mode === "fixedBudget"
+                  ? { mode, krw: 50_000 }
+                  : mode === "fixedLiters"
+                    ? { mode, liters: 30 }
+                    : { mode: mode as "full" | "toDestination" };
+              onPreferencesChange({ fillPolicy: next });
+            }}
+          />
+        </Field>
+
+        {preferences.fillPolicy.mode === "fixedBudget" && (
+          <Field label="주유 금액" value={krw(preferences.fillPolicy.krw)}>
+            <Slider
+              value={[preferences.fillPolicy.krw]}
+              min={10_000}
+              max={200_000}
+              step={5_000}
+              onValueChange={(value) =>
+                onPreferencesChange({
+                  fillPolicy: { mode: "fixedBudget", krw: num(value) },
+                })
+              }
+            />
+          </Field>
+        )}
+
+        {preferences.fillPolicy.mode === "fixedLiters" && (
+          <Field
+            label="주유량"
+            value={liters(preferences.fillPolicy.liters, 0)}
+          >
+            <Slider
+              value={[preferences.fillPolicy.liters]}
+              min={5}
+              max={vehicle.tankCapacityL}
+              step={1}
+              onValueChange={(value) =>
+                onPreferencesChange({
+                  fillPolicy: { mode: "fixedLiters", liters: num(value) },
+                })
+              }
+            />
+          </Field>
+        )}
 
         <Field
           label="실주행 연비"
@@ -402,68 +385,11 @@ export function SettingsPanel({
       <Separator />
 
       <section className="space-y-4">
-        <SectionTitle icon={Fuel}>주유 방식</SectionTitle>
-
-        <Segmented
-          options={FILL_MODES.map((m) => ({
-            value: m.mode,
-            label: m.label,
-            hint: m.hint,
-          }))}
-          value={preferences.fillPolicy.mode}
-          onChange={(mode) => {
-            const next: FillPolicy =
-              mode === "fixedBudget"
-                ? { mode, krw: 50_000 }
-                : mode === "fixedLiters"
-                  ? { mode, liters: 30 }
-                  : { mode: mode as "full" | "toDestination" };
-            onPreferencesChange({ fillPolicy: next });
-          }}
-        />
-
-        {preferences.fillPolicy.mode === "fixedBudget" && (
-          <Field
-            label="주유 금액"
-            value={krw(preferences.fillPolicy.krw)}
-          >
-            <Slider
-              value={[preferences.fillPolicy.krw]}
-              min={10_000}
-              max={200_000}
-              step={5_000}
-              onValueChange={(value) =>
-                onPreferencesChange({
-                  fillPolicy: { mode: "fixedBudget", krw: num(value) },
-                })
-              }
-            />
-          </Field>
-        )}
-
-        {preferences.fillPolicy.mode === "fixedLiters" && (
-          <Field
-            label="주유량"
-            value={liters(preferences.fillPolicy.liters, 0)}
-          >
-            <Slider
-              value={[preferences.fillPolicy.liters]}
-              min={5}
-              max={vehicle.tankCapacityL}
-              step={1}
-              onValueChange={(value) =>
-                onPreferencesChange({
-                  fillPolicy: { mode: "fixedLiters", liters: num(value) },
-                })
-              }
-            />
-          </Field>
-        )}
-
+        <SectionTitle icon={CreditCard}>할인</SectionTitle>
         <Field
           label="공통 카드 할인"
           value={`${preferences.cardDiscountKrwPerL}원/L`}
-          hint="모든 주유소에 적용되는 정액 할인입니다. 브랜드별로만 깎는 규칙은 아래 할인 프로필에 넣으세요. 둘을 같은 카드로 중복 입력하면 두 번 깎입니다."
+          hint="모든 주유소에 적용되는 정액 할인입니다. 브랜드별로만 깎는 규칙은 아래에 넣으세요. 둘을 같은 카드로 중복 입력하면 두 번 깎입니다."
         >
           <Slider
             value={[preferences.cardDiscountKrwPerL]}
@@ -475,12 +401,6 @@ export function SettingsPanel({
             }
           />
         </Field>
-      </section>
-
-      <Separator />
-
-      <section className="space-y-3">
-        <SectionTitle icon={CreditCard}>할인 프로필</SectionTitle>
         <DiscountEditor
           rules={preferences.discountRules}
           onChange={(discountRules) => onPreferencesChange({ discountRules })}
@@ -489,58 +409,8 @@ export function SettingsPanel({
 
       <Separator />
 
-      <section className="space-y-3">
-        <SectionTitle icon={Gauge}>연비 학습</SectionTitle>
-        <FillRecords
-          records={fills}
-          currentKmPerLiter={vehicle.kmPerLiter}
-          onChange={onFillsChange}
-          onApply={(kmPerLiter) => onVehicleChange({ kmPerLiter })}
-        />
-      </section>
-
-      <Separator />
-
       <section className="space-y-4">
-        <SectionTitle icon={SlidersHorizontal}>우회 허용치와 판단 기준</SectionTitle>
-
-        <Field
-          label="시간 여유"
-          value={TIME_PACE[timePaceFromKrw(preferences.timeValueKrwPerMin)].label}
-          hint="순위를 매길 때만 우회 시간을 돈으로 환산합니다. 목록에 보이는 금액은 실제로 쓰는 돈이고, 시간은 그 아래 +5분처럼 따로 적습니다."
-        >
-          <div className="grid grid-cols-3 gap-1.5">
-            {TIME_PACE_ORDER.map((pace) => {
-              const meta = TIME_PACE[pace];
-              const active = timePaceFromKrw(preferences.timeValueKrwPerMin) === pace;
-              return (
-                <button
-                  key={pace}
-                  type="button"
-                  onClick={() =>
-                    onPreferencesChange({ timeValueKrwPerMin: meta.krwPerMin })
-                  }
-                  className={cn(
-                    "rounded-lg border px-2 py-2 text-xs transition-colors",
-                    active
-                      ? "border-primary/70 bg-primary/15 text-primary"
-                      : "border-border bg-input/20 text-muted-foreground hover:bg-input/40 hover:text-foreground",
-                  )}
-                >
-                  <span className="block font-medium">{meta.label}</span>
-                  <span className="mt-0.5 block text-[10px] leading-snug opacity-80">
-                    {pace === "rushed"
-                      ? "가까운 곳 우선"
-                      : pace === "relaxed"
-                        ? "싼 곳 우선"
-                        : "균형"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </Field>
-
+        <SectionTitle icon={SlidersHorizontal}>우회와 절약 기준</SectionTitle>
         <div className="grid grid-cols-2 gap-4">
           <Field
             label="최대 우회 거리"
@@ -587,67 +457,6 @@ export function SettingsPanel({
             }
           />
         </Field>
-
-        <div className="space-y-3 rounded-lg border border-border bg-input/15 p-3">
-          <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
-            <span>셀프 주유소만 보기</span>
-            <Switch
-              checked={preferences.selfServiceOnly}
-              onCheckedChange={(checked) =>
-                onPreferencesChange({ selfServiceOnly: checked })
-              }
-            />
-          </label>
-          <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
-            <span>
-              고속도로 진출 회피
-              <span className="block text-xs text-muted-foreground">
-                본선을 벗어나면 통행료와 시간이 크게 늘어납니다
-              </span>
-            </span>
-            <Switch
-              checked={preferences.avoidHighwayExit}
-              onCheckedChange={(checked) =>
-                onPreferencesChange({ avoidHighwayExit: checked })
-              }
-            />
-          </label>
-        </div>
-
-        <div className="space-y-2">
-          <span className="text-sm text-foreground/85">브랜드 제한</span>
-          <div className="flex flex-wrap gap-1.5">
-            {BRANDS.map((brand) => {
-              const active = preferences.brands.includes(brand);
-              return (
-                <Badge
-                  key={brand}
-                  variant={active ? "default" : "outline"}
-                  className="cursor-pointer select-none"
-                  render={
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onPreferencesChange({
-                          brands: active
-                            ? preferences.brands.filter((b) => b !== brand)
-                            : [...preferences.brands, brand],
-                        })
-                      }
-                    />
-                  }
-                >
-                  {BRAND_LABEL[brand]}
-                </Badge>
-              );
-            })}
-          </div>
-          {preferences.brands.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              선택하지 않으면 모든 브랜드를 비교합니다.
-            </p>
-          )}
-        </div>
       </section>
     </div>
   );

@@ -3,7 +3,6 @@
 import {
   CheckCircle2,
   CircleSlash,
-  Flag,
   Info,
   Route as RouteIcon,
   ShieldCheck,
@@ -17,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CostBreakdown } from "@/components/cost-breakdown";
 import { FuelTimeline } from "@/components/fuel-timeline";
 import { isUnreachableByCarMessage } from "@/lib/domain/driving-region";
-import type { ReportKind, RefuelPlan, StationReport, Verdict } from "@/lib/domain/types";
+import type { RankedOption, RefuelPlan, Verdict } from "@/lib/domain/types";
 import { StationName } from "@/components/station-name";
 import {
   cashCostKrw,
@@ -39,8 +38,6 @@ interface Props {
   onSelect: (id: string) => void;
   fromCache?: boolean;
   cachedAt?: string | null;
-  reports?: StationReport[];
-  onReport?: (stationId: string, stationName: string, kind: ReportKind) => void;
 }
 
 const VERDICT_STYLE: Record<
@@ -79,56 +76,9 @@ const VERDICT_STYLE: Record<
   },
 };
 
-const REPORT_ACTIONS: { kind: ReportKind; label: string }[] = [
-  { kind: "price-mismatch", label: "현장 가격이 다름" },
-  { kind: "closed", label: "영업하지 않음" },
-  { kind: "gone", label: "폐업·이전" },
-];
-
-function ReportActions({
-  stationId,
-  stationName,
-  reports,
-  onReport,
-}: {
-  stationId: string;
-  stationName: string;
-  reports: StationReport[];
-  onReport: (stationId: string, stationName: string, kind: ReportKind) => void;
-}) {
-  const existing = reports.find((item) => item.stationId === stationId);
-  return (
-    <div className="rounded-lg border border-border bg-input/10 p-3">
-      <div className="flex items-center gap-1.5 text-xs font-semibold">
-        <Flag className="size-3.5" />
-        현장 제보
-      </div>
-      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-        이 기기 안에만 남습니다. 폐업·휴업은 다음 계산에서 빼고, 가격 불일치는
-        단가를 40원/L 비관적으로 올립니다.
-      </p>
-      {existing ? (
-        <p className="mt-2 text-xs text-amber-300">
-          이미 제보함:{" "}
-          {REPORT_ACTIONS.find((item) => item.kind === existing.kind)?.label}
-        </p>
-      ) : (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {REPORT_ACTIONS.map((action) => (
-            <Button
-              key={action.kind}
-              type="button"
-              size="xs"
-              variant="outline"
-              onClick={() => onReport(stationId, stationName, action.kind)}
-            >
-              {action.label}
-            </Button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+function compareSaving(option: RankedOption, baseline: RankedOption | null) {
+  if (!baseline) return 0;
+  return cashCostKrw(baseline) - cashCostKrw(option);
 }
 
 function LoadingState() {
@@ -153,8 +103,6 @@ export function ResultPanel({
   onSelect,
   fromCache,
   cachedAt,
-  reports = [],
-  onReport,
 }: Props) {
   if (error && !plan) {
     const unreachable = isUnreachableByCarMessage(error);
@@ -338,13 +286,17 @@ export function ResultPanel({
             <div className="flex items-baseline justify-between">
               <h2 className="text-sm font-semibold">후보 비교</h2>
               <span className="text-[11px] text-muted-foreground">
-                가까운 주유소보다 적을수록 이득
+                절약 · 작게는 실제 지출
               </span>
             </div>
             <ul className="space-y-1.5">
               {plan.options.map((option) => {
                 const active = option.station.id === selected?.station.id;
                 const isBest = option.station.id === plan.best?.station.id;
+                const spend = cashCostKrw(option);
+                const saving = compareSaving(option, plan.baseline);
+                const isBaseline =
+                  plan.baseline?.station.id === option.station.id;
                 return (
                   <li key={option.station.id}>
                     <button
@@ -375,16 +327,37 @@ export function ResultPanel({
                             className="text-sm"
                           />
                         </span>
-                        <span className="shrink-0 text-right">
-                          <span className="block font-mono text-sm tabular-nums">
-                            {krw(cashCostKrw(option))}
+                        <span className="flex shrink-0 items-baseline justify-end gap-1.5">
+                          <span
+                            className={cn(
+                              "font-mono text-sm font-semibold tabular-nums",
+                              isBaseline
+                                ? "text-muted-foreground"
+                                : saving > 50
+                                  ? "text-emerald-400"
+                                  : saving < -50
+                                    ? "text-red-400"
+                                    : "text-muted-foreground",
+                            )}
+                          >
+                            {isBaseline
+                              ? "가까운 기준"
+                              : saving > 50
+                                ? `${krw(saving)} 절약`
+                                : saving < -50
+                                  ? `${krw(-saving)} 손해`
+                                  : "차이 없음"}
                           </span>
-                          <span className="block font-mono text-[11px] text-muted-foreground">
-                            {signedMinutes(option.detour.extraDurationS)}
+                          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                            {krw(spend)}
                           </span>
                         </span>
                       </div>
                       <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span className="font-mono">
+                          {signedMinutes(option.detour.extraDurationS)}
+                        </span>
+                        <span>·</span>
                         <span className="font-mono">
                           {perLiter(option.effectivePriceKrwPerL)}
                         </span>
@@ -416,17 +389,6 @@ export function ResultPanel({
                 route={plan.route}
                 referencePriceKrwPerL={plan.referencePriceKrwPerL}
               />
-              {onReport && (
-                <ReportActions
-                  stationId={selected.station.id}
-                  stationName={stationHeading(
-                    selected.station.name,
-                    selected.station.brand,
-                  )}
-                  reports={reports}
-                  onReport={onReport}
-                />
-              )}
             </>
           )}
         </>

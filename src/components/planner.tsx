@@ -17,14 +17,9 @@ import {
   cachePlan,
   loadCachedPlan,
   loadDiscountRules,
-  loadFills,
-  loadReports,
   loadSession,
   saveDiscountRules,
-  saveFills,
-  saveReports,
   saveSession,
-  newId,
 } from "@/lib/client-store";
 import {
   carUnreachableReason,
@@ -36,9 +31,7 @@ import type {
   LatLng,
   NamedPlace,
   Preferences,
-  ReportKind,
   Route,
-  StationReport,
   Vehicle,
 } from "@/lib/domain/types";
 import { fetchPlan, reverseGeocodePlace, type PlanResponse } from "@/lib/plan-client";
@@ -74,23 +67,19 @@ function initialPlannerState(routes: Route[]) {
       ...session?.preferences,
       discountRules: session?.preferences.discountRules ?? rules,
     },
-    fills: loadFills(),
-    reports: loadReports(),
   };
 }
 
 export function Planner({ routes }: Props) {
   const [boot] = useState(() => initialPlannerState(routes));
-  const [routeId, setRouteId] = useState(boot.routeId);
+  const [routeId] = useState(boot.routeId);
   const [origin, setOrigin] = useState<NamedPlace | null>(boot.origin);
   const [destination, setDestination] = useState<NamedPlace | null>(
     boot.destination,
   );
-  const [departAt, setDepartAt] = useState(boot.departAt);
+  const [departAt] = useState(boot.departAt);
   const [vehicle, setVehicle] = useState<Vehicle>(boot.vehicle);
   const [preferences, setPreferences] = useState<Preferences>(boot.preferences);
-  const [fills, setFills] = useState(boot.fills);
-  const [reports, setReports] = useState(boot.reports);
   const [data, setData] = useState<PlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -134,9 +123,7 @@ export function Planner({ routes }: Props) {
       departAt: departAt.toISOString(),
     });
     saveDiscountRules(preferences.discountRules);
-    saveFills(fills);
-    saveReports(reports);
-  }, [vehicle, preferences, routeId, origin, destination, departAt, fills, reports]);
+  }, [vehicle, preferences, routeId, origin, destination, departAt]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -165,7 +152,6 @@ export function Planner({ routes }: Props) {
           vehicle,
           preferences,
           departAt: departAt.toISOString(),
-          reports,
         },
         controller.signal,
         (route) => {
@@ -219,7 +205,7 @@ export function Planner({ routes }: Props) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [routeId, origin, destination, vehicle, preferences, departAt, reports]);
+  }, [routeId, origin, destination, vehicle, preferences, departAt]);
 
   const unreachable =
     Boolean(error && isUnreachableByCarMessage(error)) &&
@@ -253,35 +239,6 @@ export function Planner({ routes }: Props) {
       setError(null);
     },
     [mapPick],
-  );
-
-  const handleSampleRoute = useCallback(
-    (id: string) => {
-      const next = routes.find((r) => r.id === id);
-      if (!next) return;
-      setRouteId(id);
-      setOrigin(next.origin);
-      setDestination(next.destination);
-    },
-    [routes],
-  );
-
-  const handleReport = useCallback(
-    (stationId: string, stationName: string, kind: ReportKind) => {
-      const report: StationReport = {
-        id: newId("rep"),
-        stationId,
-        stationName,
-        kind,
-        note: "",
-        reportedAt: new Date().toISOString(),
-      };
-      setReports((current) => [
-        ...current.filter((item) => item.stationId !== stationId),
-        report,
-      ]);
-    },
-    [],
   );
 
   const plan = data?.plan ?? null;
@@ -424,31 +381,17 @@ export function Planner({ routes }: Props) {
                 onSelect={handleSelect}
                 fromCache={fromCache}
                 cachedAt={cachedAt}
-                reports={reports}
-                onReport={handleReport}
               />
             ) : (
               <SettingsPanel
-                routes={routes}
-                routeId={routeId}
-                origin={origin}
-                destination={destination}
-                departAt={departAt}
                 vehicle={vehicle}
                 preferences={preferences}
-                fills={fills}
-                onRouteChange={handleSampleRoute}
-                onOriginChange={setOrigin}
-                onDestinationChange={setDestination}
-                onDepartAtChange={setDepartAt}
                 onVehicleChange={(patch) =>
                   setVehicle((current) => ({ ...current, ...patch }))
                 }
                 onPreferencesChange={(patch) =>
                   setPreferences((current) => ({ ...current, ...patch }))
                 }
-                onFillsChange={setFills}
-                onUserLocation={(lat, lng) => setUserLocation({ lat, lng })}
               />
             )}
           </div>
