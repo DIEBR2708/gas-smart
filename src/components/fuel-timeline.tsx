@@ -16,13 +16,21 @@ interface Props {
   vehicle: Vehicle;
   option: RankedOption | null;
   itinerary?: ItineraryStop[];
+  /** 목적지 목표 잔량. "필요한 만큼"이면 탱크의 20%. */
+  destinationHoldL?: number;
 }
 
 const W = 320;
 const H = 84;
 const PAD = { top: 10, right: 8, bottom: 16, left: 8 };
 
-export function FuelTimeline({ route, vehicle, option, itinerary = [] }: Props) {
+export function FuelTimeline({
+  route,
+  vehicle,
+  option,
+  itinerary = [],
+  destinationHoldL,
+}: Props) {
   const e = vehicle.kmPerLiter;
   const multi = itinerary.length >= 2;
   const extraKm = multi
@@ -75,6 +83,9 @@ export function FuelTimeline({ route, vehicle, option, itinerary = [] }: Props) 
   const line = points.map((p) => `${x(p.km)},${y(p.l)}`).join(" ");
   const area = `${PAD.left},${y(0)} ${line} ${x(totalKm)},${y(0)}`;
   const reserveY = y(vehicle.reserveL);
+  const holdL = destinationHoldL ?? vehicle.reserveL;
+  const showHold = holdL > vehicle.reserveL + 0.4;
+  const holdY = y(holdL);
   const dry = points.some((p) => p.l < 0);
   const destL = points[points.length - 1]?.l ?? 0;
 
@@ -127,6 +138,29 @@ export function FuelTimeline({ route, vehicle, option, itinerary = [] }: Props) 
         >
           예비 {vehicle.reserveL}L
         </text>
+        {showHold && (
+          <>
+            <line
+              x1={PAD.left}
+              x2={W - PAD.right}
+              y1={holdY}
+              y2={holdY}
+              stroke="#38bdf8"
+              strokeWidth="1"
+              strokeDasharray="3 3"
+              opacity="0.75"
+            />
+            <text
+              x={W - PAD.right}
+              y={holdY - 3}
+              textAnchor="end"
+              fontSize="8"
+              fill="#38bdf8"
+            >
+              도착 {Math.round(holdL)}L
+            </text>
+          </>
+        )}
 
         <polygon points={area} fill="url(#fuelFill)" />
         <polyline

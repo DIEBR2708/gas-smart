@@ -12,7 +12,13 @@ describe("parseNominatimHits", () => {
       },
       { lat: "35.0", lon: "139.0", name: "도쿄", display_name: "Tokyo" },
     ]);
-    expect(places).toEqual([{ name: "강남역", lat: 37.4979, lng: 127.0276 }]);
+    expect(places[0]).toMatchObject({
+      name: "강남역",
+      lat: 37.4979,
+      lng: 127.0276,
+    });
+    expect(places[0]?.address).toMatch(/강남대로/);
+    expect(places).toHaveLength(1);
   });
 
   it("검색에서는 번지보다 장소 이름을 쓴다", () => {
@@ -26,6 +32,7 @@ describe("parseNominatimHits", () => {
       },
     ]);
     expect(places[0]?.name).toBe("전주시청");
+    expect(places[0]?.address).toBe("서노송동 기린대로");
   });
 
   it("역지오코딩은 번지 대신 도로명을 쓴다", () => {

@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   breakEvenDetourKm,
+  destinationHoldL,
   effectivePricePerLiter,
   evaluateOption,
   litersRequiredForTrip,
   minArrivalFuelL,
   shouldSuggestSkipRefuel,
+  TO_DESTINATION_HOLD_RATIO,
   median,
   type CostContext,
 } from "./cost";
@@ -128,6 +130,23 @@ describe("shouldSuggestSkipRefuel", () => {
   });
 });
 
+describe("destinationHoldL", () => {
+  it("필요한 만큼이면 탱크의 20%와 예비량 중 큰 값을 남긴다", () => {
+    const vehicle = { ...DEFAULT_VEHICLE, tankCapacityL: 60, reserveL: 5 };
+    expect(destinationHoldL(vehicle, { mode: "toDestination" })).toBeCloseTo(
+      60 * TO_DESTINATION_HOLD_RATIO,
+      6,
+    );
+    expect(destinationHoldL(vehicle, { mode: "full" })).toBe(5);
+    expect(
+      destinationHoldL(
+        { ...vehicle, reserveL: 20 },
+        { mode: "toDestination" },
+      ),
+    ).toBe(20);
+  });
+});
+
 describe("litersRequiredForTrip", () => {
   it("현재 연료와 예비량을 반영한다", () => {
     // 100km / 10km/L = 10L 필요, 예비 6L, 보유 4L -> 12L
@@ -144,6 +163,21 @@ describe("litersRequiredForTrip", () => {
       100_000,
     );
     expect(liters).toBe(0);
+  });
+
+  it("필요한 만큼은 목적지에서 탱크 20%가 남게 넣는다", () => {
+    const vehicle = {
+      ...DEFAULT_VEHICLE,
+      tankCapacityL: 60,
+      kmPerLiter: 10,
+      currentFuelL: 4,
+      reserveL: 5,
+    };
+    const liters = litersRequiredForTrip(vehicle, 100_000, {
+      mode: "toDestination",
+    });
+    // 10L 주행 + 12L 잔량 - 4L 보유
+    expect(liters).toBeCloseTo(18, 6);
   });
 });
 

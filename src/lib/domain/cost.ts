@@ -18,6 +18,23 @@ const LOW_MARGIN_RATIO = 0.08;
 
 const EPS = 1e-9;
 
+/** "필요한 만큼"일 때 목적지 도착 잔량. 탱크의 이 비율. */
+export const TO_DESTINATION_HOLD_RATIO = 0.2;
+
+/** 주입 정책에 따른 목적지 목표 잔량 (L). */
+export function destinationHoldL(
+  vehicle: Vehicle,
+  policy?: FillPolicy,
+): number {
+  if (policy?.mode === "toDestination") {
+    return Math.max(
+      vehicle.reserveL,
+      vehicle.tankCapacityL * TO_DESTINATION_HOLD_RATIO,
+    );
+  }
+  return vehicle.reserveL;
+}
+
 /**
  * 주유소에 도착할 때 이 잔량 미만이면 후보에서 뺀다.
  * 이미 예비량 이하로 출발했다면 0L까지는 허용한다. 그렇지 않으면
@@ -80,23 +97,30 @@ export function shouldSuggestSkipRefuel(
   vehicle: Vehicle,
   route: Route,
   options: { detour: { alongRouteM: number } }[],
+  policy?: FillPolicy,
 ): boolean {
   const leftL =
     vehicle.currentFuelL - route.distanceM / 1000 / vehicle.kmPerLiter;
-  if (leftL + EPS < vehicle.reserveL + SKIP_REFUEL_EXTRA_L) return false;
+  if (leftL + EPS < destinationHoldL(vehicle, policy) + SKIP_REFUEL_EXTRA_L) {
+    return false;
+  }
   const windowM = Math.min(30_000, Math.max(15_000, route.distanceM * 0.25));
   return options.some(
     (option) => route.distanceM - option.detour.alongRouteM <= windowM,
   );
 }
 
-/** 우회 없이 그대로 달렸을 때 목적지에서 예비량을 남기기 위해 필요한 주유량 (L). */
+/** 우회 없이 그대로 달렸을 때 목적지 목표 잔량을 남기기 위해 필요한 주유량 (L). */
 export function litersRequiredForTrip(
   vehicle: Vehicle,
   distanceM: number,
+  policy?: FillPolicy,
 ): number {
   const needL = distanceM / 1000 / vehicle.kmPerLiter;
-  return Math.max(0, needL + vehicle.reserveL - vehicle.currentFuelL);
+  return Math.max(
+    0,
+    needL + destinationHoldL(vehicle, policy) - vehicle.currentFuelL,
+  );
 }
 
 function desiredLitersForPolicy(
@@ -114,7 +138,7 @@ function desiredLitersForPolicy(
       return Math.max(
         0,
         totalTripKm / vehicle.kmPerLiter +
-          vehicle.reserveL -
+          destinationHoldL(vehicle, { mode: "toDestination" }) -
           vehicle.currentFuelL,
       );
     case "full":
@@ -223,8 +247,9 @@ export function evaluateOption(
 
   const fuelAtDestinationL =
     vehicle.currentFuelL + litersToBuy - totalTripKm / e;
-  const surplusFuelL = Math.max(0, fuelAtDestinationL - vehicle.reserveL);
-  const shortfallFuelL = Math.max(0, vehicle.reserveL - fuelAtDestinationL);
+  const holdL = destinationHoldL(vehicle, preferences.fillPolicy);
+  const surplusFuelL = Math.max(0, fuelAtDestinationL - holdL);
+  const shortfallFuelL = Math.max(0, holdL - fuelAtDestinationL);
 
   const outOfPocketKrw = effectivePrice * litersToBuy;
   const detourFuelCostKrw = effectivePrice * detourFuelL;

@@ -207,11 +207,13 @@ export function PlaceSearch({
                     )}
                   >
                     <MapPin className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                    <span>
-                      <span className="block">{place.name}</span>
-                      <span className="font-mono text-[10px] text-muted-foreground">
-                        {place.lat.toFixed(4)}, {place.lng.toFixed(4)}
-                      </span>
+                    <span className="min-w-0">
+                      <span className="block truncate">{place.name}</span>
+                      {place.address && place.address !== place.name ? (
+                        <span className="block truncate text-[11px] leading-snug text-muted-foreground">
+                          {place.address}
+                        </span>
+                      ) : null}
                     </span>
                   </button>
                 </li>
@@ -266,7 +268,7 @@ export function PlaceSearch({
           role="combobox"
           aria-expanded={open}
           aria-controls={listId}
-          placeholder="지명이나 주소, 예: 강남역, 전주시청"
+          placeholder="지명이나 도로명 주소, 예: 강남역, 테헤란로 427"
           onChange={(event) => {
             setQuery(event.target.value);
             setOpen(true);

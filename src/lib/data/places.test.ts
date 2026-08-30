@@ -19,4 +19,10 @@ describe("searchGazetteer", () => {
       true,
     );
   });
+
+  it("도시 별칭은 정확 일치를 앞에 둔다", () => {
+    expect(searchGazetteer("부산")[0]?.name).toBe("부산역");
+    expect(searchGazetteer("서울")[0]?.name).toBe("서울시청");
+    expect(searchGazetteer("부산")[0]?.address).toMatch(/동구/);
+  });
 });

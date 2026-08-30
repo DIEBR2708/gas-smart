@@ -52,6 +52,8 @@ export interface LatLng {
 
 export interface NamedPlace extends LatLng {
   name: string;
+  /** 도로명·지번. 검색 목록에 이름 아래로 보여 준다. */
+  address?: string;
 }
 
 export interface Vehicle {
@@ -63,8 +65,8 @@ export interface Vehicle {
   /** 현재 연료량 (L) */
   currentFuelL: number;
   /**
-   * 예비 연료 (L). 목적지에도 이만큼은 남기고,
-   * 주유소에 도착할 때도 이 선 아래로 내려가는 후보는 목록에서 뺀다.
+   * 예비 연료 (L). 주유소에 도착할 때 이 선 아래로 내려가는 후보는 뺀다.
+   * "필요한 만큼" 주입은 목적지에서 탱크의 20%를 남긴다.
    */
   reserveL: number;
 }

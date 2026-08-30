@@ -25,7 +25,7 @@ const FILL_MODES: { mode: FillPolicy["mode"]; label: string; hint: string }[] = 
   {
     mode: "toDestination",
     label: "필요한 만큼",
-    hint: "목적지에서 예비량만 남도록 최소한만 넣습니다.",
+    hint: "목적지 도착 때 탱크의 20%가 남도록 넣습니다. 선구매분 재고가 생기지 않습니다.",
   },
   {
     mode: "full",

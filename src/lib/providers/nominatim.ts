@@ -65,7 +65,17 @@ function toPlace(hit: NominatimHit, label: string): NamedPlace | null {
   const lng = Number(hit.lon);
   if (!label || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (lat < 32 || lat > 39 || lng < 124 || lng > 132) return null;
-  return { name: label.slice(0, 80), lat, lng };
+  const fromParts = displayParts(hit)
+    .filter((part) => part !== label)
+    .slice(0, 3)
+    .join(" ");
+  const address = addressLabel(hit) || fromParts || undefined;
+  return {
+    name: label.slice(0, 80),
+    lat,
+    lng,
+    ...(address && address !== label ? { address: address.slice(0, 120) } : {}),
+  };
 }
 
 export function parseNominatimReverse(hit: NominatimHit, lat: number, lng: number): NamedPlace {

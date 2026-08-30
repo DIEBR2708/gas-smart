@@ -20,6 +20,8 @@ export interface ItineraryInput {
   vehicle: Vehicle;
   options: RankedOption[];
   fillFullAtLast: boolean;
+  /** 목적지 도착 시 남기고 싶은 양. 없으면 reserveL */
+  destinationHoldL?: number;
 }
 
 export function travelKmBetween(
@@ -40,8 +42,9 @@ export function planItinerary(input: ItineraryInput): ItineraryStop[] {
   const e = vehicle.kmPerLiter;
   const destAlong = route.distanceM;
 
+  const destHoldL = input.destinationHoldL ?? vehicle.reserveL;
   const destNeedL = (alongM: number, extraM: number) =>
-    travelKmBetween(alongM, extraM, destAlong, 0) / e + vehicle.reserveL;
+    travelKmBetween(alongM, extraM, destAlong, 0) / e + destHoldL;
 
   const sorted = [...options].sort(
     (a, b) => a.detour.alongRouteM - b.detour.alongRouteM,

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { searchGazetteer } from "@/lib/data/places";
+import { searchGazetteer, searchGazetteerPreferred } from "@/lib/data/places";
 import {
   reverseGeocodeKakao,
   searchKakaoPlaces,
@@ -62,6 +62,7 @@ export async function GET(request: Request) {
   }
 
   const gazetteer = searchGazetteer(query, 8);
+  const gazetteerTop = searchGazetteerPreferred(query, 2);
   let kakao: NamedPlace[] = [];
   if (kakaoKey) {
     try {
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
     }
   }
   const osm = kakao.length > 0 ? [] : await searchNominatim(query, 8);
-  const places = mergePlaces([kakao, osm, gazetteer]);
+  const places = mergePlaces([gazetteerTop, kakao, osm, gazetteer]);
   const source =
     kakao.length > 0 ? "mixed" : osm.length > 0 ? "nominatim" : "gazetteer";
   return NextResponse.json({ places, source });

@@ -32,13 +32,20 @@ function headers(key: string): HeadersInit {
   return { Authorization: `KakaoAK ${key}` };
 }
 
+/** 도로명·번지가 보이면 가게보다 주소 문서를 앞에 둔다. */
+export function looksLikeRoadAddress(query: string): boolean {
+  const q = query.trim();
+  return /(?:대로|번길|로|길)\s*\d+/.test(q) || /[동가]\s*\d+/.test(q);
+}
+
 function toPlace(doc: KakaoDocument): NamedPlace | null {
   const lat = Number(doc.y);
   const lng = Number(doc.x);
-  const name =
-    doc.place_name || doc.road_address_name || doc.address_name || "";
+  const address =
+    (doc.road_address_name || doc.address_name || "").trim() || undefined;
+  const name = (doc.place_name || address || "").trim();
   if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  return { name, lat, lng };
+  return address ? { name, lat, lng, address } : { name, lat, lng };
 }
 
 export async function searchKakaoPlaces(
@@ -60,9 +67,15 @@ export async function searchKakaoPlaces(
     ),
   ]);
 
+  const keywordDocs = keyword?.documents ?? [];
+  const addressDocs = address?.documents ?? [];
+  const ordered = looksLikeRoadAddress(q)
+    ? [...addressDocs, ...keywordDocs]
+    : [...keywordDocs, ...addressDocs];
+
   const seen = new Set<string>();
   const out: NamedPlace[] = [];
-  for (const doc of [...(keyword?.documents ?? []), ...(address?.documents ?? [])]) {
+  for (const doc of ordered) {
     const place = toPlace(doc);
     if (!place) continue;
     const id = `${place.name}:${place.lat.toFixed(5)}:${place.lng.toFixed(5)}`;

@@ -1,6 +1,7 @@
 import type { RouteProvider, StationProvider } from "@/lib/providers/types";
 import {
   breakEvenDetourKm,
+  destinationHoldL,
   effectivePricePerLiter,
   evaluateOption,
   litersRequiredForTrip,
@@ -203,6 +204,7 @@ export async function buildRefuelPlan(
   const litersRequiredWithoutDetour = litersRequiredForTrip(
     vehicle,
     route.distanceM,
+    preferences.fillPolicy,
   );
   const canReachWithoutRefueling = litersRequiredWithoutDetour <= 0;
 
@@ -439,6 +441,7 @@ export async function buildRefuelPlan(
     vehicle,
     options: ranked,
     fillFullAtLast: preferences.fillPolicy.mode === "full",
+    destinationHoldL: destinationHoldL(vehicle, preferences.fillPolicy),
   });
 
   const { verdict, headline } = decide({

@@ -1,5 +1,5 @@
-import { polylineLengthM } from "@/lib/domain/geo";
-import type { LatLng, Route } from "@/lib/domain/types";
+import { haversineM, polylineLengthM } from "@/lib/domain/geo";
+import type { LatLng, NamedPlace, Route } from "@/lib/domain/types";
 
 /**
  * 샘플 경로.
@@ -108,7 +108,115 @@ export const SAMPLE_ROUTE_SEEDS: SampleRouteSeed[] = [
       { lat: 37.7644, lng: 128.8987, name: "강릉역" },
     ],
   },
+  {
+    id: "seoul-busan",
+    originName: "서울시청",
+    destinationName: "부산역",
+    summary: "경부고속도로",
+    highway: true,
+    avgSpeedKmh: 80,
+    tollKrw: 24800,
+    waypoints: [
+      { lat: 37.5663, lng: 126.9779, name: "서울시청" },
+      { lat: 37.5253, lng: 127.0104, name: "한남대교" },
+      { lat: 37.484, lng: 127.043, name: "양재" },
+      { lat: 37.4402, lng: 127.0684, name: "청계산" },
+      { lat: 37.3948, lng: 127.1112, name: "판교" },
+      { lat: 37.3316, lng: 127.1078, name: "수원신갈" },
+      { lat: 37.286, lng: 127.094, name: "신갈" },
+      { lat: 37.24, lng: 127.114, name: "기흥" },
+      { lat: 37.1874, lng: 127.0862, name: "동탄" },
+      { lat: 37.145, lng: 127.07, name: "오산" },
+      { lat: 37.0765, lng: 127.1149, name: "안성맞춤" },
+      { lat: 36.99, lng: 127.19, name: "안성" },
+      { lat: 36.8988, lng: 127.1445, name: "입장" },
+      { lat: 36.81, lng: 127.16, name: "천안" },
+      { lat: 36.7605, lng: 127.2088, name: "목천" },
+      { lat: 36.6712, lng: 127.2937, name: "청주" },
+      { lat: 36.5808, lng: 127.3611, name: "남이" },
+      { lat: 36.485, lng: 127.4102, name: "신탄진" },
+      { lat: 36.4064, lng: 127.4288, name: "회덕" },
+      { lat: 36.3504, lng: 127.3845, name: "대전" },
+      { lat: 36.3064, lng: 127.5687, name: "옥천" },
+      { lat: 36.279, lng: 127.665, name: "금강" },
+      { lat: 36.175, lng: 127.776, name: "영동" },
+      { lat: 36.226, lng: 127.912, name: "황간" },
+      { lat: 36.201, lng: 127.995, name: "추풍령" },
+      { lat: 36.14, lng: 128.113, name: "김천" },
+      { lat: 36.113, lng: 128.365, name: "구미" },
+      { lat: 35.993, lng: 128.397, name: "왜관" },
+      { lat: 35.8794, lng: 128.6284, name: "동대구" },
+      { lat: 35.825, lng: 128.741, name: "경산" },
+      { lat: 35.856, lng: 129.107, name: "건천" },
+      { lat: 35.842, lng: 129.209, name: "경주" },
+      { lat: 35.717, lng: 129.184, name: "활천" },
+      { lat: 35.569, lng: 129.137, name: "언양" },
+      { lat: 35.488, lng: 129.088, name: "통도사" },
+      { lat: 35.379, lng: 129.037, name: "양산" },
+      { lat: 35.284, lng: 129.092, name: "노포" },
+      { lat: 35.1151, lng: 129.0415, name: "부산역" },
+    ],
+  },
 ];
+
+/** 끝점이 이 거리 안이면 경부 등 회랑 샘플을 쓴다. */
+export const CORRIDOR_MATCH_M = 18_000;
+
+function corridorRouteFromSeed(
+  seed: SampleRouteSeed,
+  origin: NamedPlace,
+  destination: NamedPlace,
+  reverse: boolean,
+): Route {
+  const mid = reverse
+    ? [...seed.waypoints].reverse()
+    : seed.waypoints;
+  const polyline: LatLng[] = [
+    { lat: origin.lat, lng: origin.lng },
+    ...mid.slice(1, -1).map(({ lat, lng }) => ({ lat, lng })),
+    { lat: destination.lat, lng: destination.lng },
+  ];
+  const distanceM = polylineLengthM(polyline);
+  return {
+    id: `${seed.id}${reverse ? "-rev" : ""}:${origin.name}->${destination.name}`,
+    origin,
+    destination,
+    polyline,
+    distanceM,
+    durationS: (distanceM / 1000 / seed.avgSpeedKmh) * 3600,
+    tollKrw: seed.tollKrw,
+    summary: `${seed.summary} (주요 도시 경유)`,
+    driveable: true,
+  };
+}
+
+/**
+ * 카카오 길찾기가 실패했을 때 쓰는 경부 등 회랑.
+ * 직선 근사가 아니라서 경고 배너를 띄우지 않는다.
+ */
+export function knownCorridorRoute(
+  origin: NamedPlace,
+  destination: NamedPlace,
+): Route | null {
+  for (const seed of SAMPLE_ROUTE_SEEDS) {
+    if (seed.waypoints.length < 4) continue;
+    const start = seed.waypoints[0];
+    const end = seed.waypoints[seed.waypoints.length - 1];
+    if (
+      haversineM(origin, start) <= CORRIDOR_MATCH_M &&
+      haversineM(destination, end) <= CORRIDOR_MATCH_M
+    ) {
+      return corridorRouteFromSeed(seed, origin, destination, false);
+    }
+    if (
+      haversineM(origin, end) <= CORRIDOR_MATCH_M &&
+      haversineM(destination, start) <= CORRIDOR_MATCH_M
+    ) {
+      return corridorRouteFromSeed(seed, origin, destination, true);
+    }
+  }
+  return null;
+}
 
 export function seedToRoute(seed: SampleRouteSeed): Route {
   const polyline: LatLng[] = seed.waypoints.map(({ lat, lng }) => ({ lat, lng }));

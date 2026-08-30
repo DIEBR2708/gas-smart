@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CostBreakdown } from "@/components/cost-breakdown";
 import { FuelTimeline } from "@/components/fuel-timeline";
-import { shouldSuggestSkipRefuel } from "@/lib/domain/cost";
+import { destinationHoldL, shouldSuggestSkipRefuel } from "@/lib/domain/cost";
 import { isUnreachableByCarMessage } from "@/lib/domain/driving-region";
 import { isStraightFallbackRoute } from "@/lib/domain/route-build";
 import { FUEL_KIND_LABEL, type RankedOption, type RefuelPlan } from "@/lib/domain/types";
@@ -93,13 +93,18 @@ export function ResultPanel({
   > = {
     "enough-for-next": "다음 싼 곳까지",
     "fill-full": "가득",
-    "last-stop": "목적지 예비량",
+    "last-stop": "목적지 잔량",
     "only-stop": "한 번만",
   };
 
   return (
     <div className={cn("space-y-5", loading && "opacity-60 transition-opacity")}>
-      {shouldSuggestSkipRefuel(plan.vehicle, plan.route, plan.options) && (
+      {shouldSuggestSkipRefuel(
+        plan.vehicle,
+        plan.route,
+        plan.options,
+        plan.preferences.fillPolicy,
+      ) && (
         <div className="rounded-xl border border-sky-500/40 bg-sky-500/10 px-3 py-2.5 text-sm text-sky-100">
           <p className="font-medium">주유소 들를 필요 없습니다</p>
           <p className="mt-1 text-xs leading-relaxed text-sky-100/80">
@@ -192,6 +197,10 @@ export function ResultPanel({
           vehicle={plan.vehicle}
           option={selected ?? null}
           itinerary={plan.itinerary}
+          destinationHoldL={destinationHoldL(
+            plan.vehicle,
+            plan.preferences.fillPolicy,
+          )}
         />
         <Separator className="my-3" />
         <dl className="grid grid-cols-3 gap-2 text-center">

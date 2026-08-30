@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { getSampleRoute, SAMPLE_ROUTES } from "@/lib/data/sample-routes";
+import {
+  getSampleRoute,
+  knownCorridorRoute,
+  SAMPLE_ROUTES,
+} from "@/lib/data/sample-routes";
 import {
   carUnreachableReason,
   polylineUnreachableReason,
@@ -245,22 +249,27 @@ export async function POST(request: Request) {
     try {
       route = await providers.routes.findRoute(origin, destination);
     } catch (error) {
-      try {
-        route = interpolateRoute(origin, destination);
-        const code =
-          error instanceof Error && error.message.startsWith("KAKAO:")
-            ? error.message.slice("KAKAO:".length)
-            : "";
-        if (code) route = noteKakaoRouteFailure(route, code);
-      } catch (fallback) {
-        const reason =
-          fallback instanceof Error
-            ? fallback.message
-            : "자동차로는 갈 수 없는 구간입니다.";
-        return NextResponse.json(
-          { error: reason, code: UNREACHABLE_BY_CAR_CODE },
-          { status: 400 },
-        );
+      const corridor = knownCorridorRoute(origin, destination);
+      if (corridor) {
+        route = corridor;
+      } else {
+        try {
+          route = interpolateRoute(origin, destination);
+          const code =
+            error instanceof Error && error.message.startsWith("KAKAO:")
+              ? error.message.slice("KAKAO:".length)
+              : "";
+          if (code) route = noteKakaoRouteFailure(route, code);
+        } catch (fallback) {
+          const reason =
+            fallback instanceof Error
+              ? fallback.message
+              : "자동차로는 갈 수 없는 구간입니다.";
+          return NextResponse.json(
+            { error: reason, code: UNREACHABLE_BY_CAR_CODE },
+            { status: 400 },
+          );
+        }
       }
     }
     const sea = polylineUnreachableReason(route.polyline);

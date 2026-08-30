@@ -106,6 +106,35 @@ describe("planItinerary", () => {
     expect(stops[1].option.station.id).toBe("cheap");
   });
 
+  it("목적지 목표 잔량이 있으면 그만큼 더 넣는다", () => {
+    const route = straightRoute(80);
+    const vehicle = {
+      ...DEFAULT_VEHICLE,
+      kmPerLiter: 10,
+      tankCapacityL: 60,
+      currentFuelL: 6,
+      reserveL: 5,
+    };
+    const withHold = planItinerary({
+      route,
+      vehicle,
+      options: [option({ id: "only", alongKm: 20, price: 1600 })],
+      fillFullAtLast: false,
+      destinationHoldL: 12,
+    });
+    const withReserve = planItinerary({
+      route,
+      vehicle,
+      options: [option({ id: "only", alongKm: 20, price: 1600 })],
+      fillFullAtLast: false,
+    });
+    expect(withHold[0].litersToBuy).toBeGreaterThan(withReserve[0].litersToBuy);
+    expect(withHold[0].litersToBuy - withReserve[0].litersToBuy).toBeCloseTo(
+      7,
+      5,
+    );
+  });
+
   it("현재 연료로 닿는 곳이 없으면 빈 일정이다", () => {
     const stops = planItinerary({
       route: straightRoute(250),
