@@ -5,7 +5,10 @@ import {
   polylineUnreachableReason,
   UNREACHABLE_BY_CAR_CODE,
 } from "@/lib/domain/driving-region";
-import { interpolateRoute } from "@/lib/domain/route-build";
+import {
+  interpolateRoute,
+  noteKakaoRouteFailure,
+} from "@/lib/domain/route-build";
 import { buildRefuelPlan } from "@/lib/domain/plan";
 import type {
   Brand,
@@ -237,9 +240,14 @@ export async function POST(request: Request) {
   if (origin && destination) {
     try {
       route = await providers.routes.findRoute(origin, destination);
-    } catch {
+    } catch (error) {
       try {
         route = interpolateRoute(origin, destination);
+        const code =
+          error instanceof Error && error.message.startsWith("KAKAO:")
+            ? error.message.slice("KAKAO:".length)
+            : "";
+        if (code) route = noteKakaoRouteFailure(route, code);
       } catch (fallback) {
         const reason =
           fallback instanceof Error

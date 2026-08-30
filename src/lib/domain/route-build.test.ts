@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { MockRouteProvider } from "@/lib/providers/mock/route-provider";
-import { interpolateRoute } from "./route-build";
+import {
+  interpolateRoute,
+  isStraightFallbackRoute,
+  noteKakaoRouteFailure,
+} from "./route-build";
 import { carUnreachableReason } from "./driving-region";
 
 describe("interpolateRoute", () => {
@@ -14,6 +18,10 @@ describe("interpolateRoute", () => {
     expect(route.polyline.length).toBeGreaterThan(2);
     expect(route.distanceM).toBeGreaterThan(50_000);
     expect(route.summary).toContain("직선");
+    expect(isStraightFallbackRoute(route)).toBe(true);
+    expect(
+      noteKakaoRouteFailure(route, "http-429").summary,
+    ).toContain("일일 한도");
   });
 
   it("제주로 가는 직선은 만들지 않는다", () => {

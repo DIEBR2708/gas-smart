@@ -101,6 +101,8 @@ export class KakaoRouteProvider implements RouteProvider {
     private readonly options: KakaoRouteOptions,
   ) {}
 
+  private lastFailure: string | null = null;
+
   private headers(): HeadersInit {
     return {
       Authorization: `KakaoAK ${this.restApiKey}`,
@@ -199,10 +201,17 @@ export class KakaoRouteProvider implements RouteProvider {
       headers: this.headers() as Record<string, string>,
       timeoutMs: 6_000,
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      this.lastFailure = `http-${res.status}`;
+      return null;
+    }
     const json = (await res.json()) as KakaoRouteResponse;
     const route = json.routes?.[0];
-    if (!route || route.result_code !== 0 || !route.summary) return null;
+    if (!route || route.result_code !== 0 || !route.summary) {
+      this.lastFailure = `code-${route?.result_code ?? "empty"}`;
+      return null;
+    }
+    this.lastFailure = null;
 
     const polyline: LatLng[] = [];
     for (const section of route.sections ?? []) {
@@ -254,7 +263,7 @@ export class KakaoRouteProvider implements RouteProvider {
     const pending = (async () => {
       const result = await this.request(origin, destination);
       if (!result) {
-        throw new Error("카카오 길찾기 응답을 받지 못했습니다.");
+        throw new Error(`KAKAO:${this.lastFailure ?? "no-response"}`);
       }
       const route: Route = {
         id: `kakao-${origin.name}-${destination.name}`,

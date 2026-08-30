@@ -35,6 +35,23 @@ export function interpolateRoute(origin: NamedPlace, destination: NamedPlace): R
   };
 }
 
+export function isStraightFallbackRoute(route: { summary?: string }): boolean {
+  return Boolean(route.summary?.includes("직선 근사"));
+}
+
+export function noteKakaoRouteFailure(route: Route, code: string): Route {
+  const detail =
+    code === "http-429" || code === "http-403"
+      ? "카카오 일일 한도 또는 권한 오류"
+      : code === "http-401"
+        ? "카카오 REST 키 오류"
+        : "카카오 길찾기 실패";
+  return {
+    ...route,
+    summary: `직선 근사 경로 (실도로 아님 · ${detail})`,
+  };
+}
+
 /** 바다로 끊긴 출발·도착. 지도에는 점만 찍고 선은 그리지 않는다. */
 export function disconnectedEndpointsRoute(
   origin: NamedPlace,

@@ -9,6 +9,7 @@ import { CostBreakdown } from "@/components/cost-breakdown";
 import { FuelTimeline } from "@/components/fuel-timeline";
 import { shouldSuggestSkipRefuel } from "@/lib/domain/cost";
 import { isUnreachableByCarMessage } from "@/lib/domain/driving-region";
+import { isStraightFallbackRoute } from "@/lib/domain/route-build";
 import { FUEL_KIND_LABEL, type RankedOption, type RefuelPlan } from "@/lib/domain/types";
 import { StationName } from "@/components/station-name";
 import {
@@ -105,6 +106,15 @@ export function ResultPanel({
             목적지까지 그냥 가도 연료가 남고, 도착지 근처에도 주유소가 있습니다.
             아래는 그래도 넣고 싶을 때 비교입니다.
           </p>
+        </div>
+      )}
+      {isStraightFallbackRoute(plan.route) && (
+        <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            {plan.route.summary ??
+              "카카오 길찾기를 받지 못해 출발·도착을 직선으로 이었습니다."}
+          </span>
         </div>
       )}
       {fromCache && (
@@ -339,8 +349,9 @@ export function ResultPanel({
           {plan.meta.stationProvider}
         </Badge>
         <Badge variant="outline" className="text-[10px]">
-          {plan.meta.routeProvider}
+          {plan.route.summary ?? plan.meta.routeProvider}
         </Badge>
+        <span className="font-mono">{km(plan.route.distanceM)}</span>
       </div>
     </div>
   );
