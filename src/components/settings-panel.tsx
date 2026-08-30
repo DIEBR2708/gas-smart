@@ -206,9 +206,18 @@ function MinutesControl({
           value={draft}
           onChange={(event) => {
             const raw = event.target.value.replace(/\D/g, "").slice(0, 2);
-            setDraft(raw);
+            if (!raw) {
+              setDraft("");
+              return;
+            }
             const parsed = Number(raw);
-            if (raw && parsed >= 1 && parsed <= 60) onChange(parsed);
+            if (parsed > 60) {
+              setDraft("60");
+              onChange(60);
+              return;
+            }
+            setDraft(raw);
+            if (parsed >= 1) onChange(parsed);
           }}
           onBlur={() => commit(draft)}
           onKeyDown={(event) => {
