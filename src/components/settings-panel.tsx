@@ -164,7 +164,7 @@ export function SettingsPanel({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-10">
       <section className="space-y-3">
         <SectionTitle icon={Clock}>시간 여유</SectionTitle>
         <Field
