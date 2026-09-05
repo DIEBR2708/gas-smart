@@ -445,11 +445,21 @@ export async function buildRefuelPlan(
         if (detour.extraDistanceM / 1000 > preferences.maxDetourKm) {
           excluded.push({
             station,
-            reason: `우회 ${(detour.extraDistanceM / 1000).toFixed(1)}km가 허용치 초과`,
+            reason: nearby
+              ? `${(detour.extraDistanceM / 1000).toFixed(1)}km가 허용치 초과`
+              : `우회 ${(detour.extraDistanceM / 1000).toFixed(1)}km가 허용치 초과`,
           });
           continue;
         }
-        if (detour.extraDurationS / 60 > preferences.maxDetourMin) {
+        /*
+          우회 시간 허용치는 지나가는 길이 있을 때만 뜻이 있다.
+
+          주변 검색에서 재는 시간은 "돌아가느라 더 쓰는 시간"이 아니라 주유소에
+          가는 시간 전부다. 서울에서 4km는 도로 사정에 따라 15분을 넘기므로,
+          같은 허용치를 대면 반경 안에서 찾아 둔 후보가 대부분 사라진다. 가는
+          시간은 시간 가치로 비용에 이미 들어가므로 순위로 판단한다.
+        */
+        if (!nearby && detour.extraDurationS / 60 > preferences.maxDetourMin) {
           excluded.push({
             station,
             reason: `우회 ${Math.round(detour.extraDurationS / 60)}분이 허용치 초과`,

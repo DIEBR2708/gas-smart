@@ -47,6 +47,8 @@ const FILL_MODES: { mode: FillPolicy["mode"]; label: string; hint: string }[] = 
 interface Props {
   vehicle: Vehicle;
   preferences: Preferences;
+  /** 목적지 없이 이 자리 주변만 찾는 중인지. 허용치의 뜻이 달라진다. */
+  nearby?: boolean;
   onVehicleChange: (patch: Partial<Vehicle>) => void;
   onPreferencesChange: (patch: Partial<Preferences>) => void;
 }
@@ -235,6 +237,7 @@ function MinutesControl({
 export function SettingsPanel({
   vehicle,
   preferences,
+  nearby = false,
   onVehicleChange,
   onPreferencesChange,
 }: Props) {
@@ -285,7 +288,11 @@ export function SettingsPanel({
         <Field
           label="실제 시간"
           value={`${preferences.maxDetourMin}분`}
-          hint="우회로 쓸 수 있는 시간입니다. 슬라이더나 오른쪽 칸에 1–60분을 입력하세요. 모바일에서는 숫자 키패드가 열립니다."
+          hint={
+            nearby
+              ? "이 자리 주변을 찾을 때는 쓰지 않습니다. 지나갈 길이 없으니 주유소까지 가는 시간 전부가 여기 걸려, 반경 안에서 찾은 곳이 대부분 사라집니다. 가는 시간은 위 순위 기준으로 비용에 반영됩니다."
+              : "우회로 쓸 수 있는 시간입니다. 슬라이더나 오른쪽 칸에 1–60분을 입력하세요. 모바일에서는 숫자 키패드가 열립니다."
+          }
         >
           <MinutesControl
             minutes={preferences.maxDetourMin}
@@ -500,8 +507,13 @@ export function SettingsPanel({
       <section className="space-y-4">
         <SectionTitle icon={SlidersHorizontal}>우회와 절약 기준</SectionTitle>
         <Field
-          label="최대 우회 거리"
+          label={nearby ? "최대 주행 거리" : "최대 우회 거리"}
           value={`${preferences.maxDetourKm.toFixed(1)}km`}
+          hint={
+            nearby
+              ? "이 자리에서 주유소까지 실제 도로로 갈 거리의 상한입니다. 찾는 반경도 이 값을 따릅니다."
+              : undefined
+          }
         >
           <Slider
             value={[preferences.maxDetourKm]}

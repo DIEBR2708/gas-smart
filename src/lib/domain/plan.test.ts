@@ -444,7 +444,11 @@ describe("이 자리 주변 검색", () => {
 
   const ORIGIN: NamedPlace = { name: "서울시청", lat: 37.5663, lng: 126.9779 };
 
-  function nearbyPlan(routes: RouteProvider, options: PlanOptions = {}) {
+  function nearbyPlan(
+    routes: RouteProvider,
+    overrides: { preferences?: Partial<Preferences> } = {},
+    options: PlanOptions = {},
+  ) {
     return buildRefuelPlan(
       {
         route: nearbySearchRoute(ORIGIN),
@@ -454,6 +458,7 @@ describe("이 자리 주변 검색", () => {
           fillPolicy: { mode: "toDestination" },
           maxDetourKm: 5,
           maxDetourMin: 20,
+          ...overrides.preferences,
         },
         departAt: DEPART_AT,
         nearby: true,
@@ -477,13 +482,26 @@ describe("이 자리 주변 검색", () => {
     }
   });
 
+  it("우회 시간 허용치는 안 걸고, 주행 거리 허용치는 건다", async () => {
+    const routes = new LegRouteProvider();
+    // 도시에서 몇 km만 가도 넘기는 값. 주변 검색에서는 이걸로 걸러내지 않는다.
+    const tightTime = await nearbyPlan(routes, { preferences: { maxDetourMin: 1 } });
+    const tightDistance = await nearbyPlan(routes, {
+      preferences: { maxDetourKm: 0.3 },
+    });
+
+    expect(tightTime.options.length).toBeGreaterThan(0);
+    expect(tightDistance.options).toHaveLength(0);
+  });
+
   it("실도로가 어림값보다 짧아도 가지치기가 최적안을 버리지 않는다", async () => {
     // 어림 계수(1.25)보다 짧은 길. 하한값을 어림값으로 잡으면 여기서 깨진다.
     const pruned = await nearbyPlan(new LegRouteProvider(1));
-    const exhaustive = await nearbyPlan(new LegRouteProvider(1), {
-      maxExactCandidates: Number.POSITIVE_INFINITY,
-      disablePruning: true,
-    });
+    const exhaustive = await nearbyPlan(
+      new LegRouteProvider(1),
+      {},
+      { maxExactCandidates: Number.POSITIVE_INFINITY, disablePruning: true },
+    );
 
     expect(exhaustive.best).not.toBeNull();
     expect(pruned.best!.station.id).toBe(exhaustive.best!.station.id);

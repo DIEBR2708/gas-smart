@@ -795,6 +795,7 @@ export function Planner({ routes }: Props) {
             <SettingsPanel
               vehicle={draftVehicle}
               preferences={draftPreferences}
+              nearby={searchMode === "nearby"}
               onVehicleChange={(patch) =>
                 setDraftVehicle((current) => ({ ...current, ...patch }))
               }
