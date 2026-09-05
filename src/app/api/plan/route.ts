@@ -416,10 +416,31 @@ export async function POST(request: Request) {
   const needsRefinement = !nearby && providers.routes.isLive;
   const encoder = new TextEncoder();
 
+  /*
+    브라우저가 먼저 떠난 스트림에 쓰거나 닫으면 그 자체가 예외가 된다.
+    출발지를 바꿔 이전 조회를 취소하는 것은 정상적인 사용이므로, 그때마다
+    서버 로그에 처리되지 않은 예외를 남길 이유가 없다.
+  */
+  let closed = false;
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const write = (message: unknown) => {
-        controller.enqueue(encoder.encode(`${JSON.stringify(message)}\n`));
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`${JSON.stringify(message)}\n`));
+        } catch {
+          closed = true;
+        }
+      };
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch {
+          // 이미 끊긴 스트림이다.
+        }
       };
 
       write({ type: "route", route });
@@ -472,7 +493,10 @@ export async function POST(request: Request) {
           });
         }
       }
-      controller.close();
+      close();
+    },
+    cancel() {
+      closed = true;
     },
   });
 
