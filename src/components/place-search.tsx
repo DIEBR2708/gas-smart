@@ -241,7 +241,7 @@ export function PlaceSearch({
             ref={menuRef}
             id={listId}
             role="listbox"
-            className="fixed z-[2000] max-h-56 overflow-auto rounded-lg border border-border bg-background py-1 shadow-lg"
+            className="fixed z-[var(--layer-suggestion)] max-h-56 overflow-auto rounded-lg border border-border bg-background py-1 shadow-lg"
             style={{
               top: menuBox.bottom + 4,
               left: menuBox.left,

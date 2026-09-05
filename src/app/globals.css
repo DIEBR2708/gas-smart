@@ -106,6 +106,21 @@
   --fuel-reserve: oklch(0.55 0.2 25);
   --fuel-hold: oklch(0.52 0.15 235);
   --scrollbar-thumb: oklch(0.3 0.03 262 / 28%);
+
+  /*
+    쌓임 순서.
+
+    지도는 자기 안에서 격리되므로(.leaflet-container) Leaflet이 페인에 박아
+    넣은 200~1000은 여기까지 새어 나오지 않는다. 그래서 이 값들은 서로만
+    비교하면 되고, 지도를 이기려고 네 자리 숫자를 부를 필요가 없다.
+
+    50은 shadcn 프리미티브(툴팁·셀렉트·시트)가 쓰는 기본값이다. 지도 위에
+    겹쳐 둔 것들은 그 아래, 입력 중에 떠야 하는 자동완성 목록은 그 위에 둔다.
+  */
+  --layer-map-veil: 20;
+  --layer-map-control: 30;
+  --layer-apply-dock: 40;
+  --layer-suggestion: 60;
 }
 
 .dark {
@@ -174,6 +189,17 @@
   .leaflet-container {
     background: var(--map-canvas);
     font-family: inherit;
+
+    /*
+      Leaflet은 타일·마커·컨트롤 페인에 z-index 200~1000을 직접 박아 넣는다.
+      컨테이너가 쌓임 맥락을 만들지 않으면 그 숫자들이 페이지 전체와 겨루게
+      되어, 헤더의 툴팁처럼 지도 밖에서 온 팝업이 지도 밑에 깔린다.
+
+      여기서 격리하면 그 200~1000은 지도 안에서만 통한다. 바깥에서 지도는
+      z-index 없는 요소 하나일 뿐이라, 위에 띄우려고 네 자리 숫자를 부르지
+      않아도 된다.
+    */
+    isolation: isolate;
   }
 
   /*
