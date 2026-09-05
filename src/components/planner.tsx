@@ -208,19 +208,17 @@ export function Planner({ routes }: Props) {
   /**
    * 아래 탭을 눌렀을 때.
    *
-   * 폰에서는 이 막대가 패널을 여닫는 유일한 손잡이이기도 하다. 접혀 있으면
-   * 누른 쪽으로 펴고, 펴진 채로 지금 보고 있는 쪽을 다시 누르면 접는다.
-   * 지도를 잠깐 넓게 보려고 접었다 펴는 일이 가장 잦아서, 그 왕복을 같은
-   * 버튼 안에 둔다.
+   * 탭은 접지 않는다. 접는 것은 손잡이 오른쪽 버튼만 한다. 보려고 누른
+   * 탭이 방금 보던 목록을 치워 버리면 안 된다. 다만 접힌 상태에서 탭을
+   * 누른 것은 그 내용을 보자는 뜻이므로 접기 전 높이로 펴 준다.
    */
   const selectTab = useCallback(
     (next: Tab) => {
       setTab(next);
       if (!phoneLayout) return;
       if (sheetRatio === 0) setSheetRatio(openRatioRef.current);
-      else if (next === activeTab) setSheetRatio(0);
     },
-    [phoneLayout, sheetRatio, activeTab],
+    [phoneLayout, sheetRatio],
   );
 
   const requestSeq = useRef(0);
@@ -764,7 +762,7 @@ export function Planner({ routes }: Props) {
             onToggle={toggleSheet}
             containerRef={layoutRef}
             label={sheetSummary}
-            className={cn("shrink-0 lg:hidden", collapsed && "hidden")}
+            className="shrink-0 lg:hidden"
           />
 
           {/*
