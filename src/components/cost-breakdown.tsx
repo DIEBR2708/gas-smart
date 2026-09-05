@@ -1,14 +1,12 @@
 "use client";
 
-import { AlertTriangle, ExternalLink, Info, Navigation } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import type { RankedOption, Route } from "@/lib/domain/types";
+import type { RankedOption } from "@/lib/domain/types";
 import { StationName } from "@/components/station-name";
 import {
   km,
-  stationHeading,
   krw,
   liters,
   minutes,
@@ -16,13 +14,11 @@ import {
   relativeTime,
   signedMinutes,
 } from "@/lib/format";
-import { kakaoMapRouteUrl, kakaoNaviDeepLink } from "@/lib/navi-links";
 import { cn } from "@/lib/utils";
 
 interface Props {
   option: RankedOption;
   baseline: RankedOption | null;
-  route: Route;
   referencePriceKrwPerL: number;
 }
 
@@ -49,18 +45,11 @@ function Row({
 export function CostBreakdown({
   option,
   baseline,
-  route,
   referencePriceKrwPerL,
 }: Props) {
   const station = option.station;
   const isBaseline = baseline?.station.id === station.id;
   const discount = option.listPriceKrwPerL - option.effectivePriceKrwPerL;
-
-  const naviTarget = {
-    lat: station.lat,
-    lng: station.lng,
-    name: stationHeading(station.name, station.brand),
-  };
 
   return (
     <div className="space-y-4">
@@ -165,36 +154,8 @@ export function CostBreakdown({
         </ul>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          className="flex-1"
-          nativeButton={false}
-          render={<a href={kakaoNaviDeepLink(naviTarget)} />}
-        >
-          <Navigation className="size-4" />
-          카카오내비로 안내
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="flex-1"
-          nativeButton={false}
-          render={
-            <a
-              href={kakaoMapRouteUrl(route.origin, naviTarget, route.destination)}
-              target="_blank"
-              rel="noreferrer"
-            />
-          }
-        >
-          <ExternalLink className="size-4" />
-          지도에서 경로 보기
-        </Button>
-      </div>
       <p className="text-[11px] leading-relaxed text-muted-foreground">
-        표시 가격은 주유소가 신고한 값이라 현장 가격과 다를 수 있습니다. 안내는
-        출발 전에 확정하고, 주행 중에는 화면을 조작하지 마세요.
+        표시 가격은 주유소가 신고한 값이라 현장 가격과 다를 수 있습니다.
       </p>
     </div>
   );

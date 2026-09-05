@@ -408,7 +408,6 @@ export function ResultPanel({
               <CostBreakdown
                 option={selected}
                 baseline={plan.baseline}
-                route={plan.route}
                 referencePriceKrwPerL={plan.referencePriceKrwPerL}
               />
             </>
