@@ -435,12 +435,14 @@ export function Planner({ routes }: Props) {
 
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
         {/*
-          검색창과 범례(z-500)는 덮지 않는다. 가리는 동안에도 목적지는 바꿀 수 있어야 한다.
+          Leaflet은 타일·마커·컨트롤 페인에 z-index 200~1000을 직접 박아 넣는다.
+          그보다 낮으면 막이 지도 밑에 깔려 결과 패널만 어두워진다. 그래서 막을
+          1100에, 가리는 동안에도 눌러야 하는 검색창과 범례를 1200에 둔다.
           나타나는 것만 늦춘다. 캐시에서 바로 돌아오는 조회까지 덮으면 깜빡임만 남는다.
         */}
         <div
           className={cn(
-            "pointer-events-none absolute inset-0 z-[400] flex items-start justify-center bg-slate-900/25 pt-24 backdrop-blur-[1px] transition-opacity duration-200 lg:items-center lg:pt-0 dark:bg-slate-950/45",
+            "pointer-events-none absolute inset-0 z-[1100] flex items-center justify-center bg-slate-900/25 backdrop-blur-[1px] transition-opacity duration-200 dark:bg-slate-950/45",
             loading ? "opacity-100 delay-200" : "opacity-0 delay-0",
           )}
           aria-hidden={!loading}
@@ -465,7 +467,7 @@ export function Planner({ routes }: Props) {
               (origin?.name === "현재 위치" ? origin : null)
             }
           />
-          <div className="pointer-events-auto absolute top-3 left-3 z-[500] w-[min(calc(100%-1.5rem),20.5rem)] space-y-2 rounded-xl border border-border bg-background/92 p-3 shadow-lg backdrop-blur">
+          <div className="pointer-events-auto absolute top-3 left-3 z-[1200] w-[min(calc(100%-1.5rem),20.5rem)] space-y-2 rounded-xl border border-border bg-background/92 p-3 shadow-lg backdrop-blur">
             <div className="grid grid-cols-2 gap-1 rounded-lg bg-input/30 p-0.5">
               <button
                 type="button"
@@ -535,7 +537,7 @@ export function Planner({ routes }: Props) {
               />
             )}
           </div>
-          <div className="pointer-events-none absolute top-3 right-3 z-[500] hidden flex-col gap-1 rounded-lg border border-border bg-background/85 px-2.5 py-2 text-[11px] backdrop-blur sm:flex">
+          <div className="pointer-events-none absolute top-3 right-3 z-[1200] hidden flex-col gap-1 rounded-lg border border-border bg-background/85 px-2.5 py-2 text-[11px] backdrop-blur sm:flex">
             {searchMode === "route" && (
               <Legend color="#60a5fa" label="본선 경로" />
             )}
