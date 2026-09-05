@@ -5,11 +5,18 @@ import {
   cellId,
   loadCatalogForToday,
 } from "./daily-catalog";
-import { koreaPrefetchCenters } from "./korea-grid";
 
 const CONCURRENCY = 12;
 const BACKGROUND_CONCURRENCY = 4;
-const BACKGROUND_START_MS = 20_000;
+
+/**
+ * 오피넷 오픈 API의 하루 호출 한도.
+ *
+ * 전국을 6.4km 격자로 훑으면 2천 칸이 넘는다. 그걸 배경에서 돌리면 한도가
+ * 몇 분 만에 말라 정작 사용자의 경로 조회가 빈 응답을 받는다. 그러면 지도에
+ * 주유소가 띄엄띄엄 찍혀 좌표가 깨진 것처럼 보인다.
+ */
+export const DAILY_CALL_BUDGET = 450;
 
 type Priority = "user" | "bg";
 
@@ -34,12 +41,16 @@ export class PriceFetchQueue {
   >();
   private active = 0;
   private userInFlight = 0;
-  private backgroundArmed = false;
 
   constructor(
     private readonly catalog: DailyPriceCatalog,
     private readonly fetchAround: AroundFetcher,
+    private readonly dailyBudget = DAILY_CALL_BUDGET,
   ) {}
+
+  get budgetLeft(): number {
+    return Math.max(0, this.dailyBudget - this.catalog.callCount);
+  }
 
   ensure(center: LatLng, fuelKind: FuelKind, priority: Priority): Promise<void> {
     const key = cellId(center, fuelKind);
@@ -79,32 +90,6 @@ export class PriceFetchQueue {
     await this.ensureMany(centers, fuelKind, "user");
   }
 
-  enqueueBackground(
-    centers: LatLng[],
-    fuels: FuelKind[] = ["gasoline"],
-  ): void {
-    if (this.backgroundArmed) return;
-    this.backgroundArmed = true;
-    for (const fuelKind of fuels) {
-      for (const center of centers) {
-        void this.ensure(center, fuelKind, "bg");
-      }
-    }
-  }
-
-  scheduleBackgroundPrefetch(
-    centers: LatLng[],
-    fuels: FuelKind[] = ["gasoline"],
-    delayMs = BACKGROUND_START_MS,
-  ): void {
-    if (this.backgroundArmed) return;
-    this.backgroundArmed = true;
-    setTimeout(() => {
-      this.backgroundArmed = false;
-      this.enqueueBackground(centers, fuels);
-    }, delayMs);
-  }
-
   private promote(key: string): void {
     const index = this.background.findIndex((job) => job.key === key);
     if (index < 0) return;
@@ -137,6 +122,8 @@ export class PriceFetchQueue {
 
   private async run(job: Job): Promise<void> {
     try {
+      if (this.budgetLeft <= 0) return;
+      this.catalog.countCall();
       const result = await this.fetchAround(job.center, job.fuelKind);
       if (result.ok) {
         this.catalog.ingest(result.rows, job.fuelKind);
@@ -186,7 +173,7 @@ export async function startOpinetDailyPrefetch(certKey: string): Promise<{
       fetchAroundAll(certKey, center, fuelKind),
     );
     singleton = { catalog, queue };
-    queue.scheduleBackgroundPrefetch(koreaPrefetchCenters(), ["gasoline"]);
+    // 전국을 미리 훑지 않는다. 사용자의 경로 칸만 그때그때 받는다.
     return singleton;
   })();
   return loading;

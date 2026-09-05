@@ -33,6 +33,8 @@ export interface CatalogSnapshot {
   version?: number;
   cells: string[];
   stations: CatalogStation[];
+  /** 오늘 오피넷에 실제로 보낸 조회 수. 재시작해도 한도를 다시 태우지 않는다. */
+  calls?: number;
 }
 
 export function kstDateKey(now = new Date()): string {
@@ -59,6 +61,7 @@ export class DailyPriceCatalog {
   private readonly stations = new Map<string, CatalogStation>();
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly persistToDisk: boolean;
+  private calls = 0;
 
   constructor(date = kstDateKey(), persistToDisk = true) {
     this.date = date;
@@ -71,6 +74,14 @@ export class DailyPriceCatalog {
 
   get cellCount(): number {
     return this.cells.size;
+  }
+
+  get callCount(): number {
+    return this.calls;
+  }
+
+  countCall(): void {
+    this.calls += 1;
   }
 
   cellCountForFuel(fuelKind: FuelKind): number {
@@ -219,6 +230,7 @@ export class DailyPriceCatalog {
 
   applySnapshot(snapshot: CatalogSnapshot): void {
     if (snapshot.date !== this.date) return;
+    this.calls = Math.max(this.calls, snapshot.calls ?? 0);
     for (const station of snapshot.stations) {
       this.stations.set(station.id, station);
     }
@@ -242,6 +254,7 @@ export class DailyPriceCatalog {
       version: CATALOG_SCHEMA_VERSION,
       cells: [...this.cells],
       stations: [...this.stations.values()],
+      calls: this.calls,
     };
   }
 
