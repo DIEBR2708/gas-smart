@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Crosshair, Loader2, MapPin, MapPinned } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { searchGazetteer } from "@/lib/data/places";
 import type { NamedPlace } from "@/lib/domain/types";
 import {
   geolocationAvailable,
@@ -15,6 +16,63 @@ import {
 } from "@/lib/geolocation";
 import { reverseGeocodePlace, searchPlaces } from "@/lib/plan-client";
 import { cn } from "@/lib/utils";
+
+/**
+ * 이미 받아 본 검색어의 결과. 한 글자 지웠다가 다시 치는 동안 네트워크를
+ * 기다리지 않게 한다. 탭을 닫으면 사라지는 정도의 수명이면 충분하다.
+ */
+const RESULT_CACHE = new Map<string, NamedPlace[]>();
+
+function cacheKey(query: string): string {
+  return query.trim().toLowerCase();
+}
+
+function rememberResult(query: string, places: NamedPlace[]): void {
+  const key = cacheKey(query);
+  if (!key) return;
+  if (RESULT_CACHE.size > 60) RESULT_CACHE.clear();
+  RESULT_CACHE.set(key, places);
+}
+
+function sameQuery(a: string, b: string): boolean {
+  return cacheKey(a) === cacheKey(b);
+}
+
+/**
+ * 서버 응답을 기다리는 동안 바로 보여줄 목록.
+ *
+ * 한 글자마다 왕복을 기다리면 목록이 늦게 뜬다. 내장 지명 사전과, 방금 받은
+ * 더 짧은 검색어의 결과에서 추려 먼저 채운다. 서버 응답이 오면 교체된다.
+ */
+function instantHits(query: string, limit = 8): NamedPlace[] {
+  const key = cacheKey(query);
+  if (!key) return [];
+  const exact = RESULT_CACHE.get(key);
+  if (exact) return exact;
+
+  let narrowed: NamedPlace[] = [];
+  let narrowedFrom = "";
+  for (const [cached, places] of RESULT_CACHE) {
+    if (!key.startsWith(cached) || cached.length <= narrowedFrom.length) continue;
+    const matches = places.filter((place) =>
+      `${place.name} ${place.address ?? ""}`.toLowerCase().includes(key),
+    );
+    if (matches.length === 0) continue;
+    narrowed = matches;
+    narrowedFrom = cached;
+  }
+
+  const out: NamedPlace[] = [];
+  const seen = new Set<string>();
+  for (const place of [...searchGazetteer(query, limit), ...narrowed]) {
+    const id = `${place.name}:${place.lat.toFixed(4)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(place);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
 
 interface Props {
   id: string;
@@ -38,10 +96,12 @@ export function PlaceSearch({
   onLocated,
 }: Props) {
   const [query, setQuery] = useState(value?.name ?? "");
-  const [hits, setHits] = useState<NamedPlace[]>([]);
+  const [remote, setRemote] = useState<{
+    query: string;
+    places: NamedPlace[];
+  } | null>(null);
   const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
-  const [emptyHint, setEmptyHint] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [geoBusy, setGeoBusy] = useState(false);
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -55,32 +115,41 @@ export function PlaceSearch({
     setQuery(value.name);
   }, [value]);
 
+  const hits = useMemo(() => {
+    if (remote && sameQuery(remote.query, query)) return remote.places;
+    return instantHits(query);
+  }, [remote, query]);
+
+  /** 서버가 이 검색어로 빈 목록을 준 경우에만. 기다리는 중에는 띄우지 않는다. */
+  const emptyHint =
+    query.trim().length > 0 &&
+    remote !== null &&
+    sameQuery(remote.query, query) &&
+    remote.places.length === 0;
+
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 1 || q === value?.name) {
-      setEmptyHint(false);
-      return;
-    }
+    if (q.length < 1 || q === value?.name) return;
     const controller = new AbortController();
+    // 사전·직전 결과로 목록이 이미 차 있으므로, 왕복은 짧게 모아 한 번만 보낸다.
     const timer = setTimeout(() => {
       setSearching(true);
       searchPlaces(q, controller.signal)
         .then((places) => {
-          setHits(places);
-          setEmptyHint(places.length === 0);
+          rememberResult(q, places);
+          setRemote({ query: q, places });
           setOpen(true);
         })
         .catch(() => {
           if (!controller.signal.aborted) {
-            setHits([]);
-            setEmptyHint(true);
+            setRemote({ query: q, places: [] });
             setOpen(true);
           }
         })
         .finally(() => {
           if (!controller.signal.aborted) setSearching(false);
         });
-    }, 400);
+    }, 150);
     return () => {
       clearTimeout(timer);
       controller.abort();
@@ -120,9 +189,7 @@ export function PlaceSearch({
   const pick = (place: NamedPlace) => {
     onChange(place);
     setQuery(place.name);
-    setHits([]);
     setOpen(false);
-    setEmptyHint(false);
     setGeoError(null);
   };
 

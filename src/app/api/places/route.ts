@@ -14,6 +14,40 @@ import { parseQueryCoord } from "@/lib/geolocation";
  * 지명 사전은 항상 뒤에 붙인다.
  */
 
+/**
+ * 한 글자마다 검색을 보내므로 같은 접두어가 몇 번씩 들어온다.
+ * 카카오 로컬은 일일 한도가 있으니 짧게라도 캐시해 왕복과 쿼터를 아낀다.
+ */
+const SEARCH_CACHE_TTL_MS = 60_000;
+const searchCache = new Map<
+  string,
+  { at: number; body: { places: NamedPlace[]; source: string } }
+>();
+
+function cachedSearch(key: string) {
+  const hit = searchCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at >= SEARCH_CACHE_TTL_MS) {
+    searchCache.delete(key);
+    return null;
+  }
+  return hit.body;
+}
+
+function rememberSearch(
+  key: string,
+  body: { places: NamedPlace[]; source: string },
+): void {
+  if (searchCache.size > 200) {
+    const now = Date.now();
+    for (const [cached, entry] of searchCache) {
+      if (now - entry.at >= SEARCH_CACHE_TTL_MS) searchCache.delete(cached);
+    }
+    if (searchCache.size > 200) searchCache.clear();
+  }
+  searchCache.set(key, { at: Date.now(), body });
+}
+
 function mergePlaces(lists: NamedPlace[][], limit = 8): NamedPlace[] {
   const seen = new Set<string>();
   const out: NamedPlace[] = [];
@@ -60,6 +94,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ places: [], source: "gazetteer" });
   }
 
+  const cacheKey = query.toLowerCase();
+  const cached = cachedSearch(cacheKey);
+  if (cached) return NextResponse.json(cached);
+
   const gazetteer = searchGazetteer(query, 8);
   const gazetteerTop = searchGazetteerPreferred(query, 2);
   let kakao: NamedPlace[] = [];
@@ -74,5 +112,7 @@ export async function GET(request: Request) {
   const places = mergePlaces([gazetteerTop, kakao, osm, gazetteer]);
   const source =
     kakao.length > 0 ? "mixed" : osm.length > 0 ? "nominatim" : "gazetteer";
-  return NextResponse.json({ places, source });
+  const body = { places, source };
+  if (places.length > 0) rememberSearch(cacheKey, body);
+  return NextResponse.json(body);
 }
