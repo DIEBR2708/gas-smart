@@ -161,11 +161,19 @@ export default function RouteMap({
     container?.classList.toggle("pick-mode", pickEnabled);
   }, [onPickPoint, pickEnabled]);
 
-  // 언마운트 시 지도 인스턴스를 정리한다.
+  /*
+    언마운트 시 지도 인스턴스를 정리한다.
+
+    지우기 전에 진행 중인 이동·확대 애니메이션을 세운다(`stop`). 새 경로가
+    오면 `fitBounds`로 화면을 옮기는데, 그 애니메이션이 끝나기 전에 지도를
+    지우면 뒤늦게 도착한 프레임이 이미 없어진 캔버스에 그리려 든다. 그게
+    "Cannot read properties of undefined (reading 'clearRect')"다.
+  */
   useEffect(
     () => () => {
       observerRef.current?.disconnect();
       observerRef.current = null;
+      mapRef.current?.stop();
       mapRef.current?.remove();
       mapRef.current = null;
       routeLayerRef.current = null;
@@ -209,9 +217,17 @@ export default function RouteMap({
       });
       map.getContainer().classList.toggle("pick-mode", pickEnabledRef.current);
 
-      // flex 레이아웃 안에서 컨테이너 크기가 나중에 바뀌면 Leaflet이 캐시한
-      // 크기가 틀어져 타일이 잘리거나 클릭 좌표가 밀린다.
-      const observer = new ResizeObserver(() => map?.invalidateSize());
+      /*
+        flex 레이아웃 안에서 컨테이너 크기가 나중에 바뀌면 Leaflet이 캐시한
+        크기가 틀어져 타일이 잘리거나 클릭 좌표가 밀린다.
+
+        지도는 ref로 다시 읽는다. 이 콜백은 크기 변화 다음 프레임에 오므로,
+        아래 패널을 끌던 중에 화면을 벗어나면 이미 지운 지도를 붙잡고 있는
+        수가 있다.
+      */
+      const observer = new ResizeObserver(() =>
+        mapRef.current?.invalidateSize({ debounceMoveend: true }),
+      );
       observer.observe(element);
       observerRef.current = observer;
     }
