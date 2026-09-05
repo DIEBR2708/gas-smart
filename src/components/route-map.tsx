@@ -78,13 +78,13 @@ function popupHtml(option: RankedOption): string {
   const detourKm = (option.detour.extraDistanceM / 1000).toFixed(1);
   const saving =
     option.savingKrw >= 0
-      ? `<span style="color:#4ade80">${krw(option.savingKrw)} 절약</span>`
-      : `<span style="color:#f87171">${krw(-option.savingKrw)} 손해</span>`;
+      ? `<span class="map-popup__gain">${krw(option.savingKrw)} 절약</span>`
+      : `<span class="map-popup__loss">${krw(-option.savingKrw)} 손해</span>`;
   return `
     <div style="min-width:190px">
-      <div style="font-weight:600;margin-bottom:2px">${BRAND_LABEL[option.station.brand]} <span style="font-weight:400;font-size:11px;color:#94a3b8">${stationTradeName(option.station.name, option.station.brand)}</span></div>
-      <div style="color:#94a3b8">${perLiter(option.listPriceKrwPerL)} · 할인 후 ${perLiter(option.effectivePriceKrwPerL)}</div>
-      <div style="color:#94a3b8">우회 ${detourKm}km</div>
+      <div style="font-weight:600;margin-bottom:2px">${BRAND_LABEL[option.station.brand]} <span class="map-popup__muted" style="font-weight:400;font-size:11px">${stationTradeName(option.station.name, option.station.brand)}</span></div>
+      <div class="map-popup__muted">${perLiter(option.listPriceKrwPerL)} · 할인 후 ${perLiter(option.effectivePriceKrwPerL)}</div>
+      <div class="map-popup__muted">우회 ${detourKm}km</div>
       <div style="margin-top:6px">기준 경로보다 ${saving}</div>
     </div>`;
 }
@@ -110,9 +110,9 @@ function endpointMarker(place: LatLng & { name: string }, fill: string) {
   return L.marker([place.lat, place.lng], {
     icon: L.divIcon({
       className: "",
-      html: `<div style="display:flex;align-items:center;gap:6px">
-        <span style="width:12px;height:12px;border-radius:9999px;background:${fill};border:3px solid #131a2e;box-shadow:0 0 0 2px ${fill}55"></span>
-        <span style="background:#131a2ecc;color:#e2e8f0;font-size:11px;padding:2px 6px;border-radius:6px;white-space:nowrap">${place.name}</span>
+      html: `<div class="endpoint-marker" style="--dot:${fill}">
+        <span class="endpoint-marker__dot"></span>
+        <span class="endpoint-marker__label">${place.name}</span>
       </div>`,
       iconSize: [12, 12],
       iconAnchor: [6, 6],

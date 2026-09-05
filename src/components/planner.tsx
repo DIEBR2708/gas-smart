@@ -7,6 +7,7 @@ import { PlaceSearch } from "@/components/place-search";
 import { ResultPanel } from "@/components/result-panel";
 import { SettingsPanel } from "@/components/settings-panel";
 import { SwipePages } from "@/components/swipe-pages";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -406,6 +407,7 @@ export function Planner({ routes }: Props) {
           {loading && (
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
           )}
+          <ThemeToggle />
           <Tooltip>
             <TooltipTrigger render={<span />}>
               <Badge
@@ -438,7 +440,7 @@ export function Planner({ routes }: Props) {
         */}
         <div
           className={cn(
-            "pointer-events-none absolute inset-0 z-[400] flex items-start justify-center bg-slate-950/45 pt-24 backdrop-blur-[1px] transition-opacity duration-200 lg:items-center lg:pt-0",
+            "pointer-events-none absolute inset-0 z-[400] flex items-start justify-center bg-slate-900/25 pt-24 backdrop-blur-[1px] transition-opacity duration-200 lg:items-center lg:pt-0 dark:bg-slate-950/45",
             loading ? "opacity-100 delay-200" : "opacity-0 delay-0",
           )}
           aria-hidden={!loading}

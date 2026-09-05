@@ -148,9 +148,9 @@ export function CostBreakdown({
               className={cn(
                 "flex gap-2 rounded-md px-2.5 py-2 text-xs",
                 warning.severity === "error"
-                  ? "bg-destructive/15 text-red-300"
+                  ? "bg-destructive/15 text-red-700 dark:text-red-300"
                   : warning.severity === "warn"
-                    ? "bg-amber-500/12 text-amber-300"
+                    ? "bg-amber-500/12 text-amber-800 dark:text-amber-300"
                     : "bg-input/25 text-muted-foreground",
               )}
             >

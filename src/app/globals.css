@@ -48,42 +48,69 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/*
+  밝은 모드.
+  강조색은 어두운 모드의 호박색을 그대로 쓰지 않는다. 같은 밝기의 노랑은
+  흰 배경에서 글자로 읽히지 않기 때문에, 색조는 유지하고 밝기만 낮춘다.
+  (text-primary와 bg-primary가 같은 토큰을 쓰므로 둘 다 만족해야 한다.)
+*/
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  color-scheme: light;
+
+  --background: oklch(0.98 0.004 250);
+  --foreground: oklch(0.25 0.028 262);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.25 0.028 262);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --popover-foreground: oklch(0.25 0.028 262);
+  --primary: oklch(0.52 0.13 58);
+  --primary-foreground: oklch(0.99 0.01 80);
+  --secondary: oklch(0.94 0.01 255);
+  --secondary-foreground: oklch(0.3 0.03 262);
+  --muted: oklch(0.95 0.008 255);
+  --muted-foreground: oklch(0.47 0.022 258);
+  --accent: oklch(0.93 0.018 250);
+  --accent-foreground: oklch(0.28 0.03 262);
+  --destructive: oklch(0.53 0.2 25);
+  --border: oklch(0.3 0.03 262 / 16%);
+  --input: oklch(0.3 0.03 262 / 12%);
+  --ring: oklch(0.52 0.13 58 / 45%);
+  --chart-1: oklch(0.62 0.14 62);
+  --chart-2: oklch(0.55 0.14 158);
+  --chart-3: oklch(0.5 0.14 250);
+  --chart-4: oklch(0.55 0.18 20);
+  --chart-5: oklch(0.55 0.03 262);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.25 0.028 262);
+  --sidebar-primary: oklch(0.52 0.13 58);
+  --sidebar-primary-foreground: oklch(0.99 0.01 80);
+  --sidebar-accent: oklch(0.94 0.01 255);
+  --sidebar-accent-foreground: oklch(0.3 0.03 262);
+  --sidebar-border: oklch(0.3 0.03 262 / 16%);
+  --sidebar-ring: oklch(0.52 0.13 58 / 45%);
+
+  /*
+    지도와 연료 그래프의 색. 의미를 나르는 색(이득·손해)이라 테마 토큰과
+    분리해 둔다. 배경 밝기가 뒤집히면 같은 색이 안 보이므로 짝을 맞춘다.
+  */
+  --map-canvas: oklch(0.93 0.006 250);
+  --map-surface: oklch(1 0 0);
+  --map-surface-fg: oklch(0.25 0.028 262);
+  --map-marker-ring: oklch(1 0 0);
+  --map-marker-fg: oklch(0.22 0.03 262);
+  --map-marker-shadow: oklch(0.3 0.03 262 / 30%);
+  --map-gain: oklch(0.52 0.15 152);
+  --map-loss: oklch(0.53 0.2 25);
+  --fuel-line: oklch(0.6 0.14 62);
+  --fuel-reserve: oklch(0.55 0.2 25);
+  --fuel-hold: oklch(0.52 0.15 235);
+  --scrollbar-thumb: oklch(0.3 0.03 262 / 28%);
 }
 
 .dark {
+  color-scheme: dark;
+
   --background: oklch(0.19 0.026 262);
   --foreground: oklch(0.965 0.006 250);
   --card: oklch(0.235 0.028 262);
@@ -115,6 +142,19 @@
   --sidebar-accent-foreground: oklch(0.965 0.006 250);
   --sidebar-border: oklch(1 0 0 / 12%);
   --sidebar-ring: oklch(0.79 0.16 78 / 60%);
+
+  --map-canvas: oklch(0.17 0.024 262);
+  --map-surface: oklch(0.235 0.028 262);
+  --map-surface-fg: oklch(0.965 0.006 250);
+  --map-marker-ring: oklch(0.19 0.026 262);
+  --map-marker-fg: oklch(0.19 0.026 262);
+  --map-marker-shadow: oklch(0 0 0 / 45%);
+  --map-gain: oklch(0.83 0.18 148);
+  --map-loss: oklch(0.72 0.17 22);
+  --fuel-line: oklch(0.79 0.16 78);
+  --fuel-reserve: oklch(0.72 0.17 22);
+  --fuel-hold: oklch(0.76 0.13 232);
+  --scrollbar-thumb: oklch(0.4 0.03 262);
 }
 
 @layer base {
@@ -130,30 +170,31 @@
 }
 
 @layer components {
-  /* 지도 컨테이너와 팝업을 앱 테마에 맞춘다. Leaflet 기본 스타일은 밝은 톤이다. */
+  /* 지도와 팝업을 앱 테마에 맞춘다. Leaflet 기본 스타일은 밝은 톤 고정이다. */
   .leaflet-container {
-    background: oklch(0.17 0.024 262);
+    background: var(--map-canvas);
     font-family: inherit;
   }
 
   /*
-    OpenStreetMap 기본 타일은 밝은 톤이다. 타일 페인만 반전·색상 회전해
-    어두운 테마에 맞춘다. 마커와 경로선은 다른 페인에 있어 영향을 받지 않으므로
-    색으로 전달하는 정보(절감 여부)가 왜곡되지 않는다.
+    OpenStreetMap 기본 타일은 밝은 톤이라 밝은 모드에서는 그대로 쓴다.
+    어두운 모드에서는 타일 페인만 반전·색상 회전한다. 마커와 경로선은 다른
+    페인에 있어 영향을 받지 않으므로, 색으로 전달하는 정보(절감 여부)가
+    왜곡되지 않는다.
   */
-  .leaflet-tile-pane {
+  .dark .leaflet-tile-pane {
     filter: invert(1) hue-rotate(180deg) saturate(0.22) brightness(0.86)
       contrast(1.04);
   }
 
   .leaflet-control-attribution {
-    background: oklch(0.19 0.026 262 / 82%) !important;
-    color: oklch(0.7 0.02 258) !important;
+    background: color-mix(in oklab, var(--map-surface) 82%, transparent) !important;
+    color: var(--muted-foreground) !important;
     font-size: 10px;
   }
 
   .leaflet-control-attribution a {
-    color: oklch(0.78 0.03 258) !important;
+    color: var(--map-surface-fg) !important;
   }
 
   .leaflet-container.pick-mode {
@@ -165,20 +206,57 @@
   }
 
   .leaflet-control-zoom a {
-    background: oklch(0.235 0.028 262) !important;
-    color: oklch(0.94 0.006 250) !important;
-    border-color: oklch(1 0 0 / 12%) !important;
+    background: var(--map-surface) !important;
+    color: var(--map-surface-fg) !important;
+    border-color: var(--border) !important;
   }
 
   .leaflet-control-zoom a:hover {
-    background: oklch(0.31 0.032 262) !important;
+    background: color-mix(in oklab, var(--map-surface) 88%, var(--foreground)) !important;
   }
 
   .leaflet-popup-content-wrapper,
   .leaflet-popup-tip {
-    background: oklch(0.235 0.028 262);
-    color: oklch(0.965 0.006 250);
-    box-shadow: 0 10px 40px oklch(0 0 0 / 45%);
+    background: var(--map-surface);
+    color: var(--map-surface-fg);
+    box-shadow: 0 10px 40px var(--map-marker-shadow);
+  }
+
+  .map-popup__muted {
+    color: var(--muted-foreground);
+  }
+
+  .map-popup__gain {
+    color: var(--map-gain);
+  }
+
+  .map-popup__loss {
+    color: var(--map-loss);
+  }
+
+  /* 출발·도착 표지. 지도 타일 위에 얹히므로 테마와 같이 뒤집혀야 읽힌다. */
+  .endpoint-marker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .endpoint-marker__dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 9999px;
+    background: var(--dot);
+    border: 3px solid var(--map-marker-ring);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--dot) 45%, transparent);
+  }
+
+  .endpoint-marker__label {
+    background: color-mix(in oklab, var(--map-surface) 85%, transparent);
+    color: var(--map-surface-fg);
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    white-space: nowrap;
   }
 
   .leaflet-popup-content {
@@ -190,16 +268,16 @@
     display: grid;
     place-items: center;
     border-radius: 9999px;
-    border: 2px solid oklch(0.19 0.026 262);
+    border: 2px solid var(--map-marker-ring);
     font-size: 10px;
     font-weight: 600;
-    color: oklch(0.19 0.026 262);
-    box-shadow: 0 2px 10px oklch(0 0 0 / 45%);
+    color: var(--map-marker-fg);
+    box-shadow: 0 2px 10px var(--map-marker-shadow);
     transition: transform 120ms ease;
   }
 
   .station-marker--best {
-    outline: 3px solid oklch(0.79 0.16 78 / 55%);
+    outline: 3px solid color-mix(in oklab, var(--chart-1) 55%, transparent);
     transform: scale(1.18);
   }
 
@@ -231,8 +309,8 @@
     left: 22px;
     top: -2px;
     white-space: nowrap;
-    background: #131a2ecc;
-    color: #e2e8f0;
+    background: color-mix(in oklab, var(--map-surface) 85%, transparent);
+    color: var(--map-surface-fg);
     font-size: 11px;
     padding: 2px 6px;
     border-radius: 6px;
@@ -253,7 +331,7 @@
 /* 스크롤 영역이 카드 안에서 자연스럽게 끝나도록 */
 .thin-scroll {
   scrollbar-width: thin;
-  scrollbar-color: oklch(0.4 0.03 262) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }

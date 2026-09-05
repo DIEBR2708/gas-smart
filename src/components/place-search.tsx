@@ -348,7 +348,7 @@ export function PlaceSearch({
         </p>
       )}
       {geoError && (
-        <p className="text-[11px] text-amber-300">
+        <p className="text-[11px] text-amber-700 dark:text-amber-300">
           {geoError}
           {isEmbeddedFrame() ? (
             <>

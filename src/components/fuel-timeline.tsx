@@ -1,6 +1,11 @@
 "use client";
 
-import type { ItineraryStop, RankedOption, Route, Vehicle } from "@/lib/domain/types";
+import type {
+  ItineraryStop,
+  RankedOption,
+  Route,
+  Vehicle,
+} from "@/lib/domain/types";
 import { liters } from "@/lib/format";
 
 /**
@@ -34,8 +39,10 @@ export function FuelTimeline({
   const e = vehicle.kmPerLiter;
   const multi = itinerary.length >= 2;
   const extraKm = multi
-    ? itinerary.reduce((sum, stop) => sum + stop.option.detour.extraDistanceM, 0) /
-      2000
+    ? itinerary.reduce(
+        (sum, stop) => sum + stop.option.detour.extraDistanceM,
+        0,
+      ) / 2000
     : option
       ? option.detour.extraDistanceM / 1000
       : 0;
@@ -107,8 +114,12 @@ export function FuelTimeline({
       >
         <defs>
           <linearGradient id="fuelFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#f5b544" stopOpacity="0.45" />
-            <stop offset="100%" stopColor="#f5b544" stopOpacity="0.03" />
+            <stop offset="0%" stopColor="var(--fuel-line)" stopOpacity="0.4" />
+            <stop
+              offset="100%"
+              stopColor="var(--fuel-line)"
+              stopOpacity="0.03"
+            />
           </linearGradient>
         </defs>
 
@@ -117,14 +128,15 @@ export function FuelTimeline({
           y={reserveY}
           width={W - PAD.left - PAD.right}
           height={Math.max(0, y(0) - reserveY)}
-          fill={dry ? "#f8717122" : "#f8717114"}
+          fill="var(--fuel-reserve)"
+          fillOpacity={dry ? 0.14 : 0.07}
         />
         <line
           x1={PAD.left}
           x2={W - PAD.right}
           y1={reserveY}
           y2={reserveY}
-          stroke="#f87171"
+          stroke="var(--fuel-reserve)"
           strokeWidth="1"
           strokeDasharray="4 4"
           opacity="0.7"
@@ -134,7 +146,7 @@ export function FuelTimeline({
           y={reserveY - 3}
           textAnchor="end"
           fontSize="8"
-          fill="#f87171"
+          fill="var(--fuel-reserve)"
         >
           예비 {vehicle.reserveL}L
         </text>
@@ -145,7 +157,7 @@ export function FuelTimeline({
               x2={W - PAD.right}
               y1={holdY}
               y2={holdY}
-              stroke="#38bdf8"
+              stroke="var(--fuel-hold)"
               strokeWidth="1"
               strokeDasharray="3 3"
               opacity="0.75"
@@ -155,7 +167,7 @@ export function FuelTimeline({
               y={holdY - 3}
               textAnchor="end"
               fontSize="8"
-              fill="#38bdf8"
+              fill="var(--fuel-hold)"
             >
               도착 {Math.round(holdL)}L
             </text>
@@ -166,7 +178,7 @@ export function FuelTimeline({
         <polyline
           points={line}
           fill="none"
-          stroke="#f5b544"
+          stroke="var(--fuel-line)"
           strokeWidth="2"
           strokeLinejoin="round"
         />
@@ -178,11 +190,17 @@ export function FuelTimeline({
               x2={x(mark.km)}
               y1={PAD.top}
               y2={y(0)}
-              stroke="#e2e8f0"
+              stroke="currentColor"
               strokeWidth="1"
               opacity="0.35"
+              className="text-muted-foreground"
             />
-            <circle cx={x(mark.km)} cy={y(mark.l)} r="3" fill="#f5b544" />
+            <circle
+              cx={x(mark.km)}
+              cy={y(mark.l)}
+              r="3"
+              fill="var(--fuel-line)"
+            />
           </g>
         ))}
 
@@ -195,7 +213,13 @@ export function FuelTimeline({
           strokeWidth="1"
           className="text-border"
         />
-        <text x={PAD.left} y={H - 4} fontSize="8" fill="#94a3b8">
+        <text
+          x={PAD.left}
+          y={H - 4}
+          fontSize="8"
+          fill="currentColor"
+          className="text-muted-foreground"
+        >
           {route.origin.name}
         </text>
         <text
@@ -203,7 +227,8 @@ export function FuelTimeline({
           y={H - 4}
           textAnchor="end"
           fontSize="8"
-          fill="#94a3b8"
+          fill="currentColor"
+          className="text-muted-foreground"
         >
           {route.destination.name}
         </text>

@@ -68,7 +68,7 @@ export function ResultPanel({
     const unreachable = isUnreachableByCarMessage(error);
     return (
       <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4">
-        <div className="flex items-center gap-2 font-medium text-red-300">
+        <div className="flex items-center gap-2 font-medium text-red-700 dark:text-red-300">
           <TriangleAlert className="size-4" />
           {unreachable ? "자동차로 갈 수 없는 구간" : "계산에 실패했습니다"}
         </div>
@@ -108,16 +108,16 @@ export function ResultPanel({
         plan.options,
         plan.preferences.fillPolicy,
       ) && (
-        <div className="rounded-xl border border-sky-500/40 bg-sky-500/10 px-3 py-2.5 text-sm text-sky-100">
+        <div className="rounded-xl border border-sky-500/40 bg-sky-500/10 px-3 py-2.5 text-sm text-sky-900 dark:text-sky-100">
           <p className="font-medium">주유소 들를 필요 없습니다</p>
-          <p className="mt-1 text-xs leading-relaxed text-sky-100/80">
+          <p className="mt-1 text-xs leading-relaxed text-sky-900/80 dark:text-sky-100/80">
             목적지까지 그냥 가도 연료가 남고, 도착지 근처에도 주유소가 있습니다.
             아래는 그래도 넣고 싶을 때 비교입니다.
           </p>
         </div>
       )}
       {sampleStations && (
-        <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+        <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
           <span>
             오피넷 인증키가 없어 주유소를 지어냈습니다. 지도 위 위치와 이름,
@@ -127,13 +127,13 @@ export function ResultPanel({
         </div>
       )}
       {error && !fromCache && (
-        <div className="flex gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-red-200">
+        <div className="flex gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-red-900 dark:text-red-200">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
           <span>{error}</span>
         </div>
       )}
       {plan.meta.provisional && (
-        <div className="flex gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+        <div className="flex gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-900 dark:text-sky-100">
           <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin" />
           <span>
             우회를 직선 왕복으로 어림잡은 잠정 순위입니다. 실제 경유 길찾기가
@@ -143,13 +143,13 @@ export function ResultPanel({
         </div>
       )}
       {plan.route.adjustedNote && (
-        <div className="flex gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+        <div className="flex gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-900 dark:text-sky-100">
           <Info className="mt-0.5 size-3.5 shrink-0" />
           <span>{plan.route.adjustedNote}</span>
         </div>
       )}
       {isStraightFallbackRoute(plan.route) && (
-        <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+        <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
           <span>
             {plan.route.summary ??
@@ -158,7 +158,7 @@ export function ResultPanel({
         </div>
       )}
       {fromCache && (
-        <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+        <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
           <span>
             통신에 실패해 기기에 남겨 둔 마지막 계획을 보여 줍니다
@@ -332,9 +332,9 @@ export function ResultPanel({
                               isBaseline
                                 ? "text-muted-foreground"
                                 : saving > 50
-                                  ? "text-emerald-400"
+                                  ? "text-emerald-700 dark:text-emerald-400"
                                   : saving < -50
-                                    ? "text-red-400"
+                                    ? "text-red-700 dark:text-red-400"
                                     : "text-muted-foreground",
                             )}
                           >
@@ -368,7 +368,7 @@ export function ResultPanel({
                           </>
                         )}
                         {option.warnings.some((w) => w.severity === "warn") && (
-                          <TriangleAlert className="size-3 shrink-0 text-amber-400" />
+                          <TriangleAlert className="size-3 shrink-0 text-amber-600 dark:text-amber-400" />
                         )}
                       </div>
                     </button>
