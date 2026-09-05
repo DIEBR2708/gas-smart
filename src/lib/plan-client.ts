@@ -18,6 +18,7 @@ export interface PlanResponse {
 
 export interface PlanRequest {
   routeId?: string;
+  searchMode?: "route" | "nearby";
   origin?: NamedPlace;
   destination?: NamedPlace;
   vehicle: Vehicle;
@@ -126,7 +127,9 @@ export async function reverseGeocodePlace(
   lng: number,
   signal?: AbortSignal,
 ): Promise<NamedPlace | null> {
-  const res = await fetch(`/api/places?lat=${lat}&lng=${lng}`, { signal });
+  const res = await fetch(`/api/places?lat=${lat}&lng=${lng}`, {
+    signal: signal ?? AbortSignal.timeout(6_000),
+  });
   if (!res.ok) return null;
   const json = (await res.json()) as PlaceSearchResponse;
   return json.places?.[0] ?? null;

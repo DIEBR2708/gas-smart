@@ -11,6 +11,19 @@ const nextConfig: NextConfig = {
    * 아래 설정은 개발 모드에서만 적용된다. `*`는 호스트 라벨 하나에만
    * 대응하고 `.`은 경계로 취급되므로 `*.*.*.*`가 IPv4 주소를 덮는다.
    */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Permissions-Policy",
+            value: "geolocation=(self)",
+          },
+        ],
+      },
+    ];
+  },
   allowedDevOrigins: [
     "localhost",
     "127.0.0.1",

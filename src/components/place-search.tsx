@@ -7,6 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { NamedPlace } from "@/lib/domain/types";
+import {
+  geolocationAvailable,
+  geolocationErrorText,
+  isEmbeddedFrame,
+  readDevicePosition,
+} from "@/lib/geolocation";
 import { reverseGeocodePlace, searchPlaces } from "@/lib/plan-client";
 import { cn } from "@/lib/utils";
 
@@ -120,53 +126,42 @@ export function PlaceSearch({
     setGeoError(null);
   };
 
-  const applyCoords = async (lat: number, lng: number) => {
-    onLocated?.(lat, lng);
+  const refineName = async (lat: number, lng: number) => {
     try {
       const place = await reverseGeocodePlace(lat, lng);
-      pick(place ?? { name: "현재 위치", lat, lng });
+      if (place) pick(place);
     } catch {
-      pick({ name: "현재 위치", lat, lng });
+      /* 좌표는 이미 넣었다 */
     }
   };
 
   const locate = () => {
-    if (!window.isSecureContext) {
-      setGeoError("위치는 https 또는 localhost에서만 됩니다. 지도를 눌러 지정해 주세요.");
-      onRequestMapPick?.();
-      return;
-    }
-    if (!navigator.geolocation) {
-      setGeoError("이 브라우저는 위치 정보를 지원하지 않습니다. 지도를 눌러 주세요.");
-      onRequestMapPick?.();
-      return;
-    }
-    if (window.self !== window.top) {
+    if (!geolocationAvailable()) {
       setGeoError(
-        "미리보기 창에서는 브라우저가 위치를 막을 수 있습니다. 허용하거나 지도를 눌러 주세요.",
+        window.isSecureContext
+          ? "이 브라우저는 위치 정보를 지원하지 않습니다. 지도를 눌러 주세요."
+          : "위치는 https 또는 localhost에서만 됩니다. 지도를 눌러 지정해 주세요.",
       );
+      onRequestMapPick?.();
+      return;
     }
     setGeoBusy(true);
     setGeoError(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        applyCoords(pos.coords.latitude, pos.coords.longitude).finally(() =>
-          setGeoBusy(false),
-        );
-      },
-      (err) => {
-        setGeoBusy(false);
+    void readDevicePosition()
+      .then((pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        onLocated?.(lat, lng);
+        pick({ name: "현재 위치", lat, lng });
+        void refineName(lat, lng);
+      })
+      .catch((err: { code?: number }) => {
         onRequestMapPick?.();
-        if (err.code === err.PERMISSION_DENIED) {
-          setGeoError(
-            "위치 권한이 거부되었습니다. 주소창 자물쇠에서 허용하거나, 지도를 눌러 지정하세요.",
-          );
-          return;
-        }
-        setGeoError("현재 위치를 읽지 못했습니다. 지도를 눌러 출발·도착을 찍어 주세요.");
-      },
-      { enableHighAccuracy: false, timeout: 12_000, maximumAge: 60_000 },
-    );
+        setGeoError(
+          geolocationErrorText(err?.code ?? 2, isEmbeddedFrame()),
+        );
+      })
+      .finally(() => setGeoBusy(false));
   };
 
   const menu =
@@ -285,7 +280,25 @@ export function PlaceSearch({
           지도에서 {label} 지점을 눌러 주세요.
         </p>
       )}
-      {geoError && <p className="text-[11px] text-amber-300">{geoError}</p>}
+      {geoError && (
+        <p className="text-[11px] text-amber-300">
+          {geoError}
+          {isEmbeddedFrame() ? (
+            <>
+              {" "}
+              <button
+                type="button"
+                className="underline underline-offset-2"
+                onClick={() =>
+                  window.open(window.location.href, "_blank", "noopener")
+                }
+              >
+                새 탭에서 열기
+              </button>
+            </>
+          ) : null}
+        </p>
+      )}
     </div>
   );
 }

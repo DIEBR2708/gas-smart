@@ -94,25 +94,21 @@ export function Planner({ routes }: Props) {
 
   const requestSeq = useRef(0);
 
+  const trackingLocation = userLocation !== null;
   useEffect(() => {
-    if (!window.isSecureContext || !navigator.geolocation) return;
-    const onPos = (pos: GeolocationPosition) => {
-      setUserLocation({
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude,
-      });
-    };
-    navigator.geolocation.getCurrentPosition(onPos, () => undefined, {
-      enableHighAccuracy: false,
-      timeout: 12_000,
-      maximumAge: 60_000,
-    });
-    const watch = navigator.geolocation.watchPosition(onPos, () => undefined, {
-      enableHighAccuracy: false,
-      maximumAge: 15_000,
-    });
+    if (!trackingLocation || !navigator.geolocation) return;
+    const watch = navigator.geolocation.watchPosition(
+      (pos) => {
+        setUserLocation({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
+      },
+      () => undefined,
+      { enableHighAccuracy: false, maximumAge: 15_000 },
+    );
     return () => navigator.geolocation.clearWatch(watch);
-  }, []);
+  }, [trackingLocation]);
 
   useEffect(() => {
     saveSession({

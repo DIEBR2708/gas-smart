@@ -1,4 +1,5 @@
 import type { NamedPlace } from "@/lib/domain/types";
+import { fetchOutbound } from "@/lib/http";
 
 /**
  * 카카오 로컬이 꺼져 있을 때 쓰는 주소 검색.
@@ -27,7 +28,7 @@ interface NominatimHit {
   };
 }
 
-function headers(): HeadersInit {
+function headers(): Record<string, string> {
   return { Accept: "application/json", "User-Agent": UA };
 }
 
@@ -116,9 +117,12 @@ export async function searchNominatim(
   url.searchParams.set("limit", String(limit));
   url.searchParams.set("addressdetails", "1");
   url.searchParams.set("accept-language", "ko");
+  const res = await fetchOutbound(url, {
+    headers: headers(),
+    timeoutMs: 5_000,
+  });
+  if (!res.ok) return [];
   try {
-    const res = await fetch(url, { headers: headers() });
-    if (!res.ok) return [];
     const json = (await res.json()) as NominatimHit[];
     return parseNominatimHits(Array.isArray(json) ? json : [], limit);
   } catch {
@@ -136,9 +140,12 @@ export async function reverseNominatim(
   url.searchParams.set("lon", String(lng));
   url.searchParams.set("addressdetails", "1");
   url.searchParams.set("accept-language", "ko");
+  const res = await fetchOutbound(url, {
+    headers: headers(),
+    timeoutMs: 5_000,
+  });
+  if (!res.ok) return null;
   try {
-    const res = await fetch(url, { headers: headers() });
-    if (!res.ok) return null;
     const json = (await res.json()) as NominatimHit;
     return parseNominatimReverse(json, lat, lng);
   } catch {
