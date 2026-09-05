@@ -53,7 +53,7 @@ npm run typecheck
 **키 없이도 앱 전체가 동작합니다.** 키가 없으면 결정론적 샘플 데이터를 쓰고,
 계산 로직은 실데이터와 완전히 동일합니다.
 
-실데이터로 바꾸려면 `.env.local`에 키를 넣습니다.
+실데이터로 바꾸려면 `.env.local`에 키를 넣습니다. `.env.example`을 복사해 쓰세요.
 
 ```bash
 # 오피넷(한국석유공사) 유가정보 오픈 API 인증키
@@ -65,8 +65,62 @@ OPINET_CERT_KEY=
 KAKAO_REST_API_KEY=
 ```
 
-키는 서버에서만 읽습니다. 추천 계산이 `/api/plan`에 있는 이유입니다. 브라우저로
-내려보내면 그대로 도용됩니다.
+웹으로 띄우면 키는 서버에서만 읽습니다. 추천 계산이 `/api/plan`에 있는 이유입니다.
+브라우저로 내려보내면 그대로 도용됩니다.
+
+> 오피넷에 인증키를 넘기는 파라미터 이름은 `code`입니다. `certkey`가 아닙니다.
+> 이름이 틀리면 오피넷은 거절하지 않고 HTTP 200에 빈 목록을 돌려줍니다.
+> "그 근처에 주유소가 없다"와 똑같은 응답이라, 전국 어디를 찍어도 0건이 되고
+> 앱은 조용히 샘플 데이터로 내려앉습니다.
+
+## 안드로이드 APK
+
+Capacitor로 APK를 뽑을 수 있습니다. **서버 없이 앱 혼자 돕니다.** 화면이
+오피넷과 카카오를 직접 부르고 계산도 기기 안에서 합니다.
+
+```bash
+npm run apk
+# → android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+빌드하려면 JDK 21과 Android SDK(platform 36, build-tools 36)가 필요하고,
+`android/local.properties`에 `sdk.dir=<SDK 경로>`가 있어야 합니다.
+
+APK에서 실데이터를 쓰려면 `.env.local`에 `NEXT_PUBLIC_` 접두사가 붙은 키도
+넣어야 합니다. 값은 위와 같습니다.
+
+```bash
+NEXT_PUBLIC_OPINET_CERT_KEY=
+NEXT_PUBLIC_KAKAO_REST_API_KEY=
+```
+
+**이 키들은 APK를 뜯으면 나옵니다.** 서버 없이 도는 앱의 대가입니다. 개인·프로젝트
+용도로만 쓰고, 배포할 거라면 키를 서버에 두고 앱이 그 서버를 부르게 바꾸세요.
+
+### 왜 이렇게 갈라져 있나
+
+오피넷과 카카오는 `Access-Control-Allow-Origin` 헤더를 보내지 않습니다.
+브라우저는 응답을 받고도 JS에 넘겨주지 않습니다. 서버에서 부를 때 되는 이유는
+서버가 브라우저가 아니어서입니다.
+
+APK 안에는 대신 불러 줄 서버가 없으므로, 나가는 요청을 웹뷰 fetch가 아니라
+안드로이드 네이티브 HTTP로 내보냅니다. 역시 브라우저가 아니라 같은 이유로 통합니다.
+
+플랫폼이 갈리는 지점은 네 곳뿐입니다.
+
+| 갈리는 것 | 이음매 | 웹 | 앱 |
+|---|---|---|---|
+| 키 | `lib/runtime-keys.ts` | 서버 환경변수 | 번들에 박힌 `NEXT_PUBLIC_` |
+| 나가는 HTTP | `lib/http.ts`의 `fetchOutbound` | 서버가 그냥 fetch | 네이티브 HTTP |
+| 계산 위치 | `lib/plan-client.ts` | `/api/plan` 호출 | 엔진 직접 호출 |
+| 일일 유가 캐시 | `opinet/catalog-store.ts` | `.data/` 파일 | Capacitor Preferences |
+
+계산 자체(`lib/engine/`)는 양쪽이 같은 코드입니다. HTTP를 모릅니다.
+
+`npm run apk`는 빌드 동안 `src/app/api`를 잠깐 옆으로 치웠다가 되돌립니다.
+Next는 `Request`에 의존하는 Route Handler를 정적 export 하지 못해서, 파일이
+자리에 있는 것만으로 빌드가 실패합니다. 앱에서는 안 쓰는 라우트지만 웹 개발에는
+필요하므로 지우지 않습니다.
 
 ## 구조
 
@@ -84,9 +138,14 @@ src/
     mock/              샘플 데이터 (키 불필요)
     opinet/            오피넷 유가 API (KATEC 좌표 변환 포함)
     kakao/             길찾기·로컬 검색
-  app/api/plan/        서버 계산 엔드포인트
-  app/api/places/      주소·지명 검색
+  lib/engine/          계산 본체. HTTP를 모른다. 웹과 앱이 같이 쓴다
+    plan-engine.ts     경로 확정 → 어림 순위 → 정밀 순위
+    places-engine.ts   주소·지명 검색
+  app/api/plan/        웹 전용. 엔진을 NDJSON으로 감싸는 전송 계층
+  app/api/places/      웹 전용. 엔진을 JSON으로 감싸는 전송 계층
   components/          지도와 화면
+android/               Capacitor 안드로이드 프로젝트 (권한·설정)
+scripts/build-app.mjs  APK용 정적 export
 docs/design.md         설계, 결정해야 할 사항, 위험 분석
 ```
 
@@ -106,6 +165,11 @@ docs/design.md         설계, 결정해야 할 사항, 위험 분석
   변동과 도로 제약을 모두 넣으면 최적성이 깨질 수 있습니다.
 - 전기차·화물차는 비용 구조가 달라 이 모델을 그대로 쓰면 틀린 답이 나옵니다.
 - 연비 기록·제보·할인 프로필은 이 브라우저의 `localStorage`에만 있습니다.
+- APK는 빌드와 정적 검증까지만 확인했습니다. 실제 기기에서 켜 보지는
+  못했습니다(개발 환경에서 안드로이드 에뮬레이터의 게스트 커널이 부팅되지
+  않음). 계산 엔진이 서버 없이 실시간 오피넷 데이터를 만들어 내는 것까지는
+  `lib/engine/live-check.test.ts`로 확인했고, 남은 미검증 구간은
+  `CapacitorHttp`가 기기에서 기대대로 동작하는지 하나입니다.
 
 ## 안전
 
