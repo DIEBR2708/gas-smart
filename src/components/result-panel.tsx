@@ -136,9 +136,9 @@ export function ResultPanel({
         <div className="flex gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-900 dark:text-sky-100">
           <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin" />
           <span>
-            우회를 직선 왕복으로 어림잡은 잠정 순위입니다. 실제 경유 길찾기가
-            도착하는 대로 거리·시간·금액이 그 자리에서 바뀝니다. 먼저 보고 싶은
-            주유소를 누르면 그곳부터 계산합니다.
+            주유소를 찾았고, 지금 한 곳씩 실제로 얼마나 돌아가는지 재고 있습니다.
+            나들목 간격은 지도만 봐서는 알 수 없어 순위와 절감액은 아직 내지
+            않습니다. 먼저 알고 싶은 곳을 누르면 그곳부터 계산합니다.
           </span>
         </div>
       )}
@@ -282,18 +282,32 @@ export function ResultPanel({
         <>
           <div className="space-y-2">
             <div className="flex items-baseline justify-between">
-              <h2 className="text-sm font-semibold">후보 비교</h2>
+              <h2 className="text-sm font-semibold">
+                {plan.meta.provisional ? "찾은 주유소" : "후보 비교"}
+              </h2>
               <span className="text-[11px] text-muted-foreground">
-                절약 · 작게는 주유 결제액
+                {plan.meta.provisional
+                  ? "순위 계산 중"
+                  : "절약 · 작게는 주유 결제액"}
               </span>
             </div>
             <ul className="space-y-1.5">
               {plan.options.map((option) => {
                 const active = option.station.id === selected?.station.id;
-                const isBest = option.station.id === plan.best?.station.id;
+                /*
+                  잠정 단계에서는 1위도, 절감액도 내세우지 않는다.
+                  둘 다 우회 어림값에서 나온 값인데, 실제 경유 길찾기가 오면
+                  이탈거리가 비슷한 두 곳이 0.4km와 7.4km로 갈리기도 한다.
+                  기하학으로는 나들목 간격을 알 수 없다. 지금 확실한 것은
+                  "이 주유소들을 찾았고 표시가는 이렇다"까지다.
+                */
+                const isBest =
+                  !plan.meta.provisional &&
+                  option.station.id === plan.best?.station.id;
                 const spend = option.outOfPocketKrw;
                 const saving = compareSaving(option, plan.baseline);
                 const isBaseline =
+                  !plan.meta.provisional &&
                   plan.baseline?.station.id === option.station.id;
                 return (
                   <li key={option.station.id}>
@@ -329,7 +343,7 @@ export function ResultPanel({
                           <span
                             className={cn(
                               "font-mono text-sm font-semibold tabular-nums",
-                              isBaseline
+                              plan.meta.provisional || isBaseline
                                 ? "text-muted-foreground"
                                 : saving > 50
                                   ? "text-emerald-700 dark:text-emerald-400"
@@ -338,29 +352,39 @@ export function ResultPanel({
                                     : "text-muted-foreground",
                             )}
                           >
-                            {isBaseline
-                              ? "기준 경로"
-                              : saving > 50
-                                ? `${krw(saving)} 절약`
-                                : saving < -50
-                                  ? `${krw(-saving)} 손해`
-                                  : "차이 없음"}
+                            {plan.meta.provisional
+                              ? perLiter(option.effectivePriceKrwPerL)
+                              : isBaseline
+                                ? "기준 경로"
+                                : saving > 50
+                                  ? `${krw(saving)} 절약`
+                                  : saving < -50
+                                    ? `${krw(-saving)} 손해`
+                                    : "차이 없음"}
                           </span>
-                          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                            {krw(spend)}
-                          </span>
+                          {!plan.meta.provisional && (
+                            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                              {krw(spend)}
+                            </span>
+                          )}
                         </span>
                       </div>
                       <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-                        <span className="font-mono">
-                          {signedMinutes(option.detour.extraDurationS)}
-                        </span>
-                        <span>·</span>
-                        <span className="font-mono">
-                          {perLiter(option.effectivePriceKrwPerL)}
-                        </span>
-                        <span>·</span>
-                        <span>우회 {km(option.detour.extraDistanceM)}</span>
+                        {plan.meta.provisional ? (
+                          <span>우회 계산 대기</span>
+                        ) : (
+                          <>
+                            <span className="font-mono">
+                              {signedMinutes(option.detour.extraDurationS)}
+                            </span>
+                            <span>·</span>
+                            <span className="font-mono">
+                              {perLiter(option.effectivePriceKrwPerL)}
+                            </span>
+                            <span>·</span>
+                            <span>우회 {km(option.detour.extraDistanceM)}</span>
+                          </>
+                        )}
                         {option.station.isSelfService && (
                           <>
                             <span>·</span>

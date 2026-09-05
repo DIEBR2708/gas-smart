@@ -11,6 +11,7 @@ import {
 } from "./cost";
 import { rejectIllegalUturn, withAccessHint } from "./access";
 import { STATION_SEARCH_MAX_RADIUS_M, planCorridorSearch } from "./corridor";
+import { estimateDetour } from "./detour-estimate";
 import { nearbyGeometricDetour } from "./nearby";
 import {
   cumulativeDistances,
@@ -118,27 +119,6 @@ export interface PlanOptions {
   priorityStationId?: string;
   /** 출발지·도착지가 바뀌어 이 계산이 쓸모없어지면 끊는다. */
   signal?: AbortSignal;
-}
-
-/**
- * 길찾기를 치지 않고 잰 우회. 경로에서 x 떨어진 곳은 왕복 2x로 보고,
- * 시간은 우회 평균 속도로 환산한다.
- *
- * 하한값 계산과 달리 시간을 0으로 두지 않는다. 하한은 "이보다 나쁠 수 없다"를
- * 증명해야 하지만, 이쪽은 정밀 계산이 끝나기 전에 보여줄 어림값이라 실제에
- * 가까운 편이 낫다.
- */
-function estimatedDetour(proj: Projection): Detour {
-  const extraDistanceM = proj.offsetM * 2;
-  return {
-    extraDistanceM,
-    extraDurationS: (extraDistanceM / 1000 / DETOUR_SPEED_KMH) * 3600,
-    extraTollKrw: 0,
-    alongRouteM: proj.alongM,
-    offRouteM: proj.offsetM,
-    joinPoint: proj.point,
-    source: "geometric-estimate",
-  };
 }
 
 function passesHardFilters(
@@ -416,7 +396,7 @@ export async function buildRefuelPlan(
       const rawDetour = nearby
         ? nearbyGeometricDetour(route.origin, station, proj)
         : estimateOnly
-          ? estimatedDetour(proj)
+          ? estimateDetour(route, station, proj)
           : detours.get(station.id);
       if (!rawDetour) continue;
       const detour = rejectIllegalUturn(rawDetour, proj, station, route);
