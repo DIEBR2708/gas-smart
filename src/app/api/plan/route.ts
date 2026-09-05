@@ -428,6 +428,7 @@ export async function POST(request: Request) {
         if (needsRefinement) {
           const draft = await buildRefuelPlan(planInput, providers, {
             detourMode: "estimate",
+            signal: request.signal,
           });
           write({ type: "plan", stage: "estimate", ...toPayload(draft) });
         }

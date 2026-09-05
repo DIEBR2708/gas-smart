@@ -95,6 +95,30 @@ describe("어림 계산 먼저, 정밀 계산 나중", () => {
     expect(draft.meta.exactlyEvaluated).toBe(exact.meta.exactlyEvaluated);
   });
 
+  it("정밀 목록은 어림 목록에서 늘어나지 않는다", async () => {
+    const { providers: a } = makeProviders();
+    const { providers: b } = makeProviders();
+    const tight = { preferences: { ...DEFAULT_PREFERENCES, maxDetourKm: 1.5 } };
+    const draft = await buildRefuelPlan(
+      { route, vehicle: DEFAULT_VEHICLE, departAt: DEPART_AT, ...tight },
+      a,
+      { detourMode: "estimate" },
+    );
+    const exact = await buildRefuelPlan(
+      { route, vehicle: DEFAULT_VEHICLE, departAt: DEPART_AT, ...tight },
+      b,
+    );
+
+    /*
+      어림값으로 걸러내면 목록이 줄었다가 다시 늘어난다. 어느 쪽이 맞는지
+      모르는 채로 화면이 두 번 흔들리는 것이 가장 나쁘다.
+    */
+    const drafted = new Set(draft.options.map((o) => o.station.id));
+    for (const option of exact.options) {
+      expect(drafted).toContain(option.station.id);
+    }
+  });
+
   it("길찾기는 한 묶음으로 나가 왕복 대기가 한 번이다", async () => {
     const { providers, routes } = makeProviders();
     const exact = await plan(providers);

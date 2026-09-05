@@ -108,8 +108,8 @@ export interface PlanOptions {
   maxExactCandidates?: number;
   disablePruning?: boolean;
   /**
-   * `estimate`면 경유 길찾기를 한 건도 치지 않고 직선 왕복으로만 우회를 잰다.
-   * 본선 경로가 나온 직후 순위를 먼저 보여주기 위한 1차 계산에 쓴다.
+   * `estimate`면 경유 길찾기를 한 건도 치지 않고 기하학으로만 우회를 잰다.
+   * 본선 경로가 나온 직후, 찾은 주유소를 먼저 보여주기 위한 1차 계산에 쓴다.
    */
   detourMode?: "estimate" | "exact";
   /**
@@ -401,19 +401,29 @@ export async function buildRefuelPlan(
       if (!rawDetour) continue;
       const detour = rejectIllegalUturn(rawDetour, proj, station, route);
 
-      if (detour.extraDistanceM / 1000 > preferences.maxDetourKm) {
-        excluded.push({
-          station,
-          reason: `우회 ${(detour.extraDistanceM / 1000).toFixed(1)}km가 허용치 초과`,
-        });
-        continue;
-      }
-      if (detour.extraDurationS / 60 > preferences.maxDetourMin) {
-        excluded.push({
-          station,
-          reason: `우회 ${Math.round(detour.extraDurationS / 60)}분이 허용치 초과`,
-        });
-        continue;
+      /*
+        우회 허용치는 실제로 잰 우회에만 적용한다.
+
+        어림값으로 걸러내면 목록이 줄었다가 다시 늘어난다. 기하학은 나들목
+        간격을 모르기 때문에 실제로는 우회가 거의 없는 곳을 허용치 초과로
+        내쫓는 일이 생긴다. 1차 목록은 "확인 중인 곳 전부"로 두고, 걸러내는
+        일은 진짜 경로가 온 뒤에 한 번만 한다.
+      */
+      if (!estimateOnly) {
+        if (detour.extraDistanceM / 1000 > preferences.maxDetourKm) {
+          excluded.push({
+            station,
+            reason: `우회 ${(detour.extraDistanceM / 1000).toFixed(1)}km가 허용치 초과`,
+          });
+          continue;
+        }
+        if (detour.extraDurationS / 60 > preferences.maxDetourMin) {
+          excluded.push({
+            station,
+            reason: `우회 ${Math.round(detour.extraDurationS / 60)}분이 허용치 초과`,
+          });
+          continue;
+        }
       }
 
       const option = evaluateOption(station, detour, ctx);
