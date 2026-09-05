@@ -2,7 +2,6 @@
 
 import { CircleSlash, Info, Loader2, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CostBreakdown } from "@/components/cost-breakdown";
@@ -15,13 +14,11 @@ import { StationName } from "@/components/station-name";
 import {
   cashCostKrw,
   km,
-  stationHeading,
   krw,
   liters,
   perLiter,
   signedMinutes,
 } from "@/lib/format";
-import { kakaoMapMultiStopUrl } from "@/lib/navi-links";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -169,34 +166,7 @@ export function ResultPanel({
       )}
       {plan.itinerary.length >= 2 && (
         <div className="space-y-2 rounded-xl border border-violet-500/30 bg-violet-500/5 p-3">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">나눠 넣는 순서</h2>
-            <Button
-              size="xs"
-              variant="outline"
-              nativeButton={false}
-              render={
-                <a
-                  href={kakaoMapMultiStopUrl([
-                    plan.route.origin,
-                    ...plan.itinerary.map((stop) => ({
-                      name: stationHeading(
-                        stop.option.station.name,
-                        stop.option.station.brand,
-                      ),
-                      lat: stop.option.station.lat,
-                      lng: stop.option.station.lng,
-                    })),
-                    plan.route.destination,
-                  ])}
-                  target="_blank"
-                  rel="noreferrer"
-                />
-              }
-            >
-              지도에서 일정 보기
-            </Button>
-          </div>
+          <h2 className="text-sm font-semibold">나눠 넣는 순서</h2>
           <ol className="space-y-1.5">
             {plan.itinerary.map((stop, index) => (
               <li key={`${stop.option.station.id}-${index}`}>
