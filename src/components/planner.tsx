@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FlaskConical, Loader2, Map as MapIcon, SlidersHorizontal } from "lucide-react";
+import { ApplyDock } from "@/components/apply-dock";
 import { PlaceSearch } from "@/components/place-search";
 import { ResultPanel } from "@/components/result-panel";
 import { SettingsPanel } from "@/components/settings-panel";
@@ -38,6 +39,7 @@ import type {
   Vehicle,
 } from "@/lib/domain/types";
 import { fetchPlan, reverseGeocodePlace, type PlanResponse } from "@/lib/plan-client";
+import { changedSettingLabels } from "@/lib/settings-diff";
 import { cn } from "@/lib/utils";
 
 const RouteMap = dynamic(() => import("@/components/route-map"), {
@@ -88,8 +90,17 @@ export function Planner({ routes }: Props) {
     boot.searchMode,
   );
   const [departAt] = useState(boot.departAt);
+  /*
+    차량·조건은 편집한 즉시 반영하지 않는다. 슬라이더를 한 칸 밀 때마다 경로를
+    다시 계산하면 조회가 줄줄이 나가고 화면이 계속 비워진다. 편집은 초안(draft)에
+    모아 두고, 떠 있는 카드에서 "적용"을 눌렀을 때만 아래 값으로 옮긴다.
+  */
   const [vehicle, setVehicle] = useState<Vehicle>(boot.vehicle);
   const [preferences, setPreferences] = useState<Preferences>(boot.preferences);
+  const [draftVehicle, setDraftVehicle] = useState<Vehicle>(boot.vehicle);
+  const [draftPreferences, setDraftPreferences] = useState<Preferences>(
+    boot.preferences,
+  );
   const [data, setData] = useState<PlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -381,6 +392,10 @@ export function Planner({ routes }: Props) {
 
   const plan = data?.plan ?? null;
   const isSample = data?.dataMode !== "live";
+  const pendingChanges = changedSettingLabels(
+    { vehicle, preferences },
+    { vehicle: draftVehicle, preferences: draftPreferences },
+  );
 
   return (
     <div className="flex h-dvh min-h-0 flex-col overflow-hidden">
@@ -435,14 +450,13 @@ export function Planner({ routes }: Props) {
 
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
         {/*
-          Leaflet은 타일·마커·컨트롤 페인에 z-index 200~1000을 직접 박아 넣는다.
-          그보다 낮으면 막이 지도 밑에 깔려 결과 패널만 어두워진다. 그래서 막을
-          1100에, 가리는 동안에도 눌러야 하는 검색창과 범례를 1200에 둔다.
+          막은 지도를 덮되, 가리는 동안에도 눌러야 하는 검색창과 범례는 그 위에
+          남는다. 쌓임 순서는 globals.css의 --layer-* 에 모아 두었다.
           나타나는 것만 늦춘다. 캐시에서 바로 돌아오는 조회까지 덮으면 깜빡임만 남는다.
         */}
         <div
           className={cn(
-            "pointer-events-none absolute inset-0 z-[1100] flex items-center justify-center bg-slate-900/25 backdrop-blur-[1px] transition-opacity duration-200 dark:bg-slate-950/45",
+            "pointer-events-none absolute inset-0 z-[var(--layer-map-veil)] flex items-center justify-center bg-slate-900/25 backdrop-blur-[1px] transition-opacity duration-200 dark:bg-slate-950/45",
             loading ? "opacity-100 delay-200" : "opacity-0 delay-0",
           )}
           aria-hidden={!loading}
@@ -467,7 +481,7 @@ export function Planner({ routes }: Props) {
               (origin?.name === "현재 위치" ? origin : null)
             }
           />
-          <div className="pointer-events-auto absolute top-3 left-3 z-[1200] w-[min(calc(100%-1.5rem),20.5rem)] space-y-2 rounded-xl border border-border bg-background/92 p-3 shadow-lg backdrop-blur">
+          <div className="pointer-events-auto absolute top-3 left-3 z-[var(--layer-map-control)] w-[min(calc(100%-1.5rem),20.5rem)] space-y-2 rounded-xl border border-border bg-background/92 p-3 shadow-lg backdrop-blur">
             <div className="grid grid-cols-2 gap-1 rounded-lg bg-input/30 p-0.5">
               <button
                 type="button"
@@ -537,7 +551,7 @@ export function Planner({ routes }: Props) {
               />
             )}
           </div>
-          <div className="pointer-events-none absolute top-3 right-3 z-[1200] hidden flex-col gap-1 rounded-lg border border-border bg-background/85 px-2.5 py-2 text-[11px] backdrop-blur sm:flex">
+          <div className="pointer-events-none absolute top-3 right-3 z-[var(--layer-map-control)] hidden flex-col gap-1 rounded-lg border border-border bg-background/85 px-2.5 py-2 text-[11px] backdrop-blur sm:flex">
             {searchMode === "route" && (
               <Legend color="#60a5fa" label="본선 경로" />
             )}
@@ -589,18 +603,30 @@ export function Planner({ routes }: Props) {
               sampleStations={isSample && !fromCache}
             />
             <SettingsPanel
-              vehicle={vehicle}
-              preferences={preferences}
+              vehicle={draftVehicle}
+              preferences={draftPreferences}
               onVehicleChange={(patch) =>
-                setVehicle((current) => ({ ...current, ...patch }))
+                setDraftVehicle((current) => ({ ...current, ...patch }))
               }
               onPreferencesChange={(patch) =>
-                setPreferences((current) => ({ ...current, ...patch }))
+                setDraftPreferences((current) => ({ ...current, ...patch }))
               }
             />
           </SwipePages>
         </aside>
       </div>
+
+      <ApplyDock
+        labels={pendingChanges}
+        onApply={() => {
+          setVehicle(draftVehicle);
+          setPreferences(draftPreferences);
+        }}
+        onRevert={() => {
+          setDraftVehicle(vehicle);
+          setDraftPreferences(preferences);
+        }}
+      />
     </div>
   );
 }

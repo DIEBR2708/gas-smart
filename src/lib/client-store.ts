@@ -23,6 +23,7 @@ const KEYS = {
   session: "cfn.session",
   reserve5Migrated: "cfn.migrated.reserve5",
   fuel20Migrated: "cfn.migrated.fuel20",
+  dockPosition: "cfn.dockPosition",
 };
 
 export interface SessionState {
@@ -116,6 +117,20 @@ export function loadSession(): SessionState | null {
 
 export function saveSession(session: SessionState) {
   writeJson(KEYS.session, session);
+}
+
+/** 변경사항 적용 카드를 사용자가 끌어다 놓은 자리 (뷰포트 좌상단 기준 px) */
+export function loadDockPosition(): { x: number; y: number } | null {
+  const saved = readJson<{ x: number; y: number } | null>(KEYS.dockPosition, null);
+  if (!saved || !Number.isFinite(saved.x) || !Number.isFinite(saved.y)) return null;
+  return saved;
+}
+
+export function saveDockPosition(position: { x: number; y: number }) {
+  writeJson(KEYS.dockPosition, {
+    x: Math.round(position.x),
+    y: Math.round(position.y),
+  });
 }
 
 export function newId(prefix: string): string {
