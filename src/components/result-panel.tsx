@@ -99,7 +99,8 @@ export function ResultPanel({
 
   return (
     <div className={cn("space-y-5", loading && "opacity-60 transition-opacity")}>
-      {shouldSuggestSkipRefuel(
+      {!plan.nearby &&
+        shouldSuggestSkipRefuel(
         plan.vehicle,
         plan.route,
         plan.options,
@@ -210,13 +211,17 @@ export function ResultPanel({
                 ? "0L"
                 : liters(plan.litersRequiredWithoutDetour)}
             </dd>
-            <dt className="text-[11px] text-muted-foreground">필요 주유량</dt>
+            <dt className="text-[11px] text-muted-foreground">
+              {plan.nearby ? "탱크 여유" : "필요 주유량"}
+            </dt>
           </div>
           <div>
             <dd className="font-mono text-sm">
               {perLiter(plan.referencePriceKrwPerL)}
             </dd>
-            <dt className="text-[11px] text-muted-foreground">경로 주변 시세</dt>
+            <dt className="text-[11px] text-muted-foreground">
+              {plan.nearby ? "주변 시세" : "경로 주변 시세"}
+            </dt>
           </div>
           <div>
             <dd className="font-mono text-sm">{plan.options.length}곳</dd>

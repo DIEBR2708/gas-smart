@@ -27,6 +27,7 @@ import {
   isUnreachableByCarMessage,
 } from "@/lib/domain/driving-region";
 import { DEFAULT_PREFERENCES, DEFAULT_VEHICLE } from "@/lib/domain/fixtures";
+import { nearbySearchRoute } from "@/lib/domain/nearby";
 import { disconnectedEndpointsRoute } from "@/lib/domain/route-build";
 import type {
   LatLng,
@@ -58,6 +59,10 @@ function initialPlannerState(routes: Route[]) {
     routeId: sample.id,
     origin: session?.origin ?? sample.origin,
     destination: session?.destination ?? sample.destination,
+    searchMode:
+      session?.searchMode === "nearby"
+        ? ("nearby" as const)
+        : ("route" as const),
     departAt:
       parsedDepart && !Number.isNaN(parsedDepart.getTime())
         ? parsedDepart
@@ -77,6 +82,9 @@ export function Planner({ routes }: Props) {
   const [origin, setOrigin] = useState<NamedPlace | null>(boot.origin);
   const [destination, setDestination] = useState<NamedPlace | null>(
     boot.destination,
+  );
+  const [searchMode, setSearchMode] = useState<"route" | "nearby">(
+    boot.searchMode,
   );
   const [departAt] = useState(boot.departAt);
   const [vehicle, setVehicle] = useState<Vehicle>(boot.vehicle);
@@ -118,17 +126,29 @@ export function Planner({ routes }: Props) {
       origin,
       destination,
       departAt: departAt.toISOString(),
+      searchMode,
     });
     saveDiscountRules(preferences.discountRules);
-  }, [vehicle, preferences, routeId, origin, destination, departAt]);
+  }, [vehicle, preferences, routeId, origin, destination, departAt, searchMode]);
 
   useEffect(() => {
     const controller = new AbortController();
     const seq = ++requestSeq.current;
 
     const timer = setTimeout(() => {
+      if (searchMode === "nearby" && !origin) {
+        setData(null);
+        setError("이 자리에서 찾으려면 위치를 지정해 주세요.");
+        setFromCache(false);
+        setCachedAt(null);
+        setSelectedId(null);
+        setLoading(false);
+        return;
+      }
       const blocked =
-        origin && destination ? carUnreachableReason(origin, destination) : null;
+        searchMode === "route" && origin && destination
+          ? carUnreachableReason(origin, destination)
+          : null;
       if (blocked) {
         setData(null);
         setError(blocked);
@@ -144,8 +164,10 @@ export function Planner({ routes }: Props) {
       fetchPlan(
         {
           routeId,
+          searchMode,
           origin: origin ?? undefined,
-          destination: destination ?? undefined,
+          destination:
+            searchMode === "nearby" ? undefined : destination ?? undefined,
           vehicle,
           preferences,
           departAt: departAt.toISOString(),
@@ -202,17 +224,24 @@ export function Planner({ routes }: Props) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [routeId, origin, destination, vehicle, preferences, departAt]);
+  }, [routeId, origin, destination, vehicle, preferences, departAt, searchMode]);
 
   const unreachable =
     Boolean(error && isUnreachableByCarMessage(error)) &&
     Boolean(origin && destination);
-  const displayRoute = unreachable && origin && destination
-    ? disconnectedEndpointsRoute(origin, destination)
-    : previewRoute ??
-      data?.plan.route ??
-      routes.find((r) => r.id === routeId) ??
-      routes[0];
+  const displayRoute =
+    searchMode === "nearby" && origin
+      ? previewRoute && previewRoute.id.startsWith("nearby:")
+        ? previewRoute
+        : data?.plan.nearby
+          ? data.plan.route
+          : nearbySearchRoute(origin)
+      : unreachable && origin && destination
+        ? disconnectedEndpointsRoute(origin, destination)
+        : previewRoute ??
+          data?.plan.route ??
+          routes.find((r) => r.id === routeId) ??
+          routes[0];
 
   const handleSelect = useCallback((id: string) => {
     if (mapPick) return;
@@ -250,11 +279,14 @@ export function Planner({ routes }: Props) {
           </span>
           <div className="min-w-0">
             <h1 className="truncate text-sm font-semibold">
-              경로 위에서 가장 싸게 넣기
+              {searchMode === "nearby"
+                ? "이 자리에서 가장 싸게 넣기"
+                : "경로 위에서 가장 싸게 넣기"}
             </h1>
             <p className="truncate text-xs text-muted-foreground">
-              가격만 비교하지 않습니다. 우회 연료·시간·통행료까지 더한 실질
-              비용으로 고릅니다.
+              {searchMode === "nearby"
+                ? "목적지 없이, 여기서 갈 수 있는 주유소만 비교합니다."
+                : "가격만 비교하지 않습니다. 우회 연료·시간·통행료까지 더한 실질 비용으로 고릅니다."}
             </p>
           </div>
         </div>
@@ -305,9 +337,43 @@ export function Planner({ routes }: Props) {
             }
           />
           <div className="pointer-events-auto absolute top-3 left-3 z-[500] w-[min(calc(100%-1.5rem),20.5rem)] space-y-2 rounded-xl border border-border bg-background/92 p-3 shadow-lg backdrop-blur">
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-input/30 p-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchMode("route");
+                  setMapPick(null);
+                }}
+                className={cn(
+                  "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                  searchMode === "route"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                경로에서
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchMode("nearby");
+                  setMapPick((current) =>
+                    current === "destination" ? null : current,
+                  );
+                }}
+                className={cn(
+                  "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                  searchMode === "nearby"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                이 자리에서
+              </button>
+            </div>
             <PlaceSearch
               id="map-origin"
-              label="출발"
+              label={searchMode === "nearby" ? "위치" : "출발"}
               value={origin}
               onChange={(place) => {
                 setOrigin(place);
@@ -320,32 +386,41 @@ export function Planner({ routes }: Props) {
                 setMapPick((current) => (current === "origin" ? null : "origin"))
               }
             />
-            <PlaceSearch
-              id="map-destination"
-              label="도착"
-              value={destination}
-              onChange={(place) => {
-                setDestination(place);
-                setMapPick(null);
-              }}
-              allowGeolocation
-              onLocated={(lat, lng) => setUserLocation({ lat, lng })}
-              mapPickActive={mapPick === "destination"}
-              onRequestMapPick={() =>
-                setMapPick((current) =>
-                  current === "destination" ? null : "destination",
-                )
-              }
-            />
+            {searchMode === "route" && (
+              <PlaceSearch
+                id="map-destination"
+                label="도착"
+                value={destination}
+                onChange={(place) => {
+                  setDestination(place);
+                  setMapPick(null);
+                }}
+                allowGeolocation
+                onLocated={(lat, lng) => setUserLocation({ lat, lng })}
+                mapPickActive={mapPick === "destination"}
+                onRequestMapPick={() =>
+                  setMapPick((current) =>
+                    current === "destination" ? null : "destination",
+                  )
+                }
+              />
+            )}
           </div>
           <div className="pointer-events-none absolute top-3 right-3 z-[500] hidden flex-col gap-1 rounded-lg border border-border bg-background/85 px-2.5 py-2 text-[11px] backdrop-blur sm:flex">
-            <Legend color="#60a5fa" label="본선 경로" />
-            <Legend color="#f5b544" label="선택한 주유소 경유" />
+            {searchMode === "route" && (
+              <Legend color="#60a5fa" label="본선 경로" />
+            )}
+            <Legend
+              color="#f5b544"
+              label={searchMode === "nearby" ? "선택한 주유소" : "선택한 주유소 경유"}
+            />
             <Legend color="#4ade80" label="가까운 곳보다 이득" />
             <Legend color="#94a3b8" label="차이 미미" />
             <Legend color="#f87171" label="가까운 곳보다 손해" />
             <span className="pt-0.5 text-[10px] text-muted-foreground">
-              주유소를 누르면 경유 경로
+              {searchMode === "nearby"
+                ? "주유소를 누르면 가는 길"
+                : "주유소를 누르면 경유 경로"}
             </span>
           </div>
         </div>

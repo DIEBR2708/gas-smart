@@ -64,6 +64,8 @@ export interface CostContext {
   reports?: StationReport[];
   /** 다회 주유 일정에서 주입량을 강제할 때 쓴다. */
   forcedLiters?: number;
+  /** 목적지 없이 이 자리 주변만 볼 때. 주입은 가득(또는 지정량)으로 비교한다. */
+  nearby?: boolean;
 }
 
 /** 카드 정액 할인 후 정률 할인을 적용한 실지불 단가. */
@@ -219,13 +221,16 @@ export function evaluateOption(
   const effectivePrice = effectivePricePerLiter(listed, preferences, station.brand);
   const e = vehicle.kmPerLiter;
 
-  const baseKm = route.distanceM / 1000;
+  const baseKm = ctx.nearby ? 0 : route.distanceM / 1000;
   const detourKm = detour.extraDistanceM / 1000;
   const totalTripKm = baseKm + detourKm;
   const detourFuelL = detourKm / e;
 
-  // 펌프에 도착할 때까지 달린 거리: 본선 주행분 + 진입 우회분(왕복 중 절반)
-  const inboundKm = detour.alongRouteM / 1000 + detourKm / 2;
+  // 펌프에 도착할 때까지 달린 거리.
+  // 경로 위는 본선 + 왕복 우회의 절반. 이 자리 주변은 여기부터 주유소까지.
+  const inboundKm = ctx.nearby
+    ? detourKm
+    : detour.alongRouteM / 1000 + detourKm / 2;
   const fuelOnArrivalL = vehicle.currentFuelL - inboundKm / e;
   const reachable = fuelOnArrivalL + EPS >= minArrivalFuelL(vehicle);
 
@@ -233,10 +238,14 @@ export function evaluateOption(
     0,
     vehicle.tankCapacityL - Math.max(0, fuelOnArrivalL),
   );
+  const fillPolicy =
+    ctx.nearby && preferences.fillPolicy.mode === "toDestination"
+      ? ({ mode: "full" } as const)
+      : preferences.fillPolicy;
   const desiredL =
     ctx.forcedLiters !== undefined
       ? ctx.forcedLiters
-      : desiredLitersForPolicy(preferences.fillPolicy, {
+      : desiredLitersForPolicy(fillPolicy, {
           totalTripKm,
           vehicle,
           maxFillableL,
@@ -247,7 +256,7 @@ export function evaluateOption(
 
   const fuelAtDestinationL =
     vehicle.currentFuelL + litersToBuy - totalTripKm / e;
-  const holdL = destinationHoldL(vehicle, preferences.fillPolicy);
+  const holdL = destinationHoldL(vehicle, fillPolicy);
   const surplusFuelL = Math.max(0, fuelAtDestinationL - holdL);
   const shortfallFuelL = Math.max(0, holdL - fuelAtDestinationL);
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { isNearbySearchRoute } from "@/lib/domain/nearby";
 import type { LatLng, RankedOption, Route } from "@/lib/domain/types";
 import { stationHeading, stationTradeName, krw, perLiter } from "@/lib/format";
 import { BRAND_LABEL } from "@/lib/domain/types";
@@ -222,14 +223,16 @@ export default function RouteMap({
     map.invalidateSize();
 
     routeLayer.clearLayers();
-    const driveable = route.driveable !== false && polyline.length >= 2;
+    const nearby = isNearbySearchRoute(route);
+    const driveable =
+      !nearby && route.driveable !== false && polyline.length >= 2;
     const via = selectedId ? shapes[selectedId] : undefined;
     const viaLine =
       via && via.length > 1
         ? via.map((p) => [p.lat, p.lng] as L.LatLngTuple)
         : null;
 
-    if (driveable && viaLine) {
+    if ((driveable || nearby) && viaLine) {
       L.polyline(polyline, {
         color: "#64748b",
         weight: 5,
@@ -263,19 +266,35 @@ export default function RouteMap({
       }).addTo(routeLayer);
     }
     endpointMarker(route.origin, "#38bdf8").addTo(routeLayer);
-    endpointMarker(route.destination, "#f472b6").addTo(routeLayer);
+    if (!nearby) {
+      endpointMarker(route.destination, "#f472b6").addTo(routeLayer);
+    }
     if (userLocation) {
       userLocationMarker(userLocation).addTo(routeLayer);
     }
 
     if (fittedRouteRef.current !== route.id) {
-      const bounds = driveable
-        ? L.latLngBounds(polyline)
-        : L.latLngBounds([
-            [route.origin.lat, route.origin.lng],
-            [route.destination.lat, route.destination.lng],
-          ]);
-      map.fitBounds(bounds.pad(0.12));
+      if (nearby) {
+        const around = L.latLngBounds([
+          [route.origin.lat, route.origin.lng],
+        ]);
+        for (const option of options) {
+          around.extend([option.station.lat, option.station.lng]);
+        }
+        if (around.getNorthEast().equals(around.getSouthWest())) {
+          map.setView([route.origin.lat, route.origin.lng], 13);
+        } else {
+          map.fitBounds(around.pad(0.28));
+        }
+      } else {
+        const bounds = driveable
+          ? L.latLngBounds(polyline)
+          : L.latLngBounds([
+              [route.origin.lat, route.origin.lng],
+              [route.destination.lat, route.destination.lng],
+            ]);
+        map.fitBounds(bounds.pad(0.12));
+      }
       fittedRouteRef.current = route.id;
     }
 

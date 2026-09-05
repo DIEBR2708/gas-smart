@@ -14,6 +14,7 @@ import {
   isStraightFallbackRoute,
   noteKakaoRouteFailure,
 } from "@/lib/domain/route-build";
+import { nearbySearchRoute } from "@/lib/domain/nearby";
 import { buildRefuelPlan } from "@/lib/domain/plan";
 import type {
   Brand,
@@ -48,9 +49,11 @@ function planCacheKey(input: {
   preferences: Preferences;
   reports: StationReport[];
   departAt: Date;
+  nearby: boolean;
 }): string {
   return JSON.stringify({
     routeId: input.routeId ?? "",
+    nearby: input.nearby,
     o: input.origin && [input.origin.lat.toFixed(4), input.origin.lng.toFixed(4)],
     d:
       input.destination &&
@@ -64,6 +67,7 @@ function planCacheKey(input: {
 
 interface PlanRequestBody {
   routeId?: string;
+  searchMode?: "route" | "nearby";
   origin?: NamedPlace;
   destination?: NamedPlace;
   vehicle?: Partial<Vehicle>;
@@ -201,19 +205,28 @@ export async function POST(request: Request) {
   const providers = resolveProviders(vehicle.fuelKind, departAt);
   const origin = parsePlace(body.origin);
   const destination = parsePlace(body.destination);
+  const nearby = body.searchMode === "nearby";
   const cacheKey = planCacheKey({
     routeId: body.routeId,
     origin,
-    destination,
+    destination: nearby ? null : destination,
     vehicle,
     preferences,
     reports,
     departAt,
+    nearby,
   });
 
   let route = getSampleRoute(body.routeId ?? "") ?? SAMPLE_ROUTES[0];
 
-  if (origin && destination) {
+  if (nearby) {
+    if (!origin) {
+      return NextResponse.json(
+        { error: "이 자리에서 찾으려면 위치를 지정해 주세요." },
+        { status: 400 },
+      );
+    }
+  } else if (origin && destination) {
     const same =
       Math.abs(origin.lat - destination.lat) < 1e-5 &&
       Math.abs(origin.lng - destination.lng) < 1e-5;
@@ -245,7 +258,9 @@ export async function POST(request: Request) {
     return NextResponse.json(cached.payload);
   }
 
-  if (origin && destination) {
+  if (nearby && origin) {
+    route = nearbySearchRoute(origin);
+  } else if (origin && destination) {
     try {
       route = await providers.routes.findRoute(origin, destination);
     } catch (error) {
@@ -283,7 +298,7 @@ export async function POST(request: Request) {
 
   try {
     const plan = await buildRefuelPlan(
-      { route, vehicle, preferences, departAt, reports },
+      { route, vehicle, preferences, departAt, reports, nearby },
       providers,
     );
 

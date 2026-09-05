@@ -3,6 +3,7 @@ import { SAMPLE_ROUTES } from "@/lib/data/sample-routes";
 import { MockRouteProvider } from "@/lib/providers/mock/route-provider";
 import { MockStationProvider } from "@/lib/providers/mock/station-provider";
 import { DEFAULT_PREFERENCES, DEFAULT_VEHICLE } from "./fixtures";
+import { nearbySearchRoute } from "./nearby";
 import { buildRefuelPlan } from "./plan";
 import type { Preferences, Vehicle } from "./types";
 
@@ -320,4 +321,35 @@ describe("가지치기가 최적안을 버리지 않는다", () => {
       );
     });
   }
+});
+
+describe("이 자리 주변 검색", () => {
+  it("목적지 없이 주변 주유소를 줄세운다", async () => {
+    const result = await buildRefuelPlan(
+      {
+        route: nearbySearchRoute({
+          name: "서울시청",
+          lat: 37.5663,
+          lng: 126.9779,
+        }),
+        vehicle: DEFAULT_VEHICLE,
+        preferences: {
+          ...DEFAULT_PREFERENCES,
+          fillPolicy: { mode: "toDestination" },
+          maxDetourKm: 5,
+          maxDetourMin: 20,
+        },
+        departAt: DEPART_AT,
+        nearby: true,
+      },
+      providers,
+    );
+    expect(result.nearby).toBe(true);
+    expect(result.canReachWithoutRefueling).toBe(false);
+    expect(result.options.length).toBeGreaterThan(0);
+    expect(result.best).not.toBeNull();
+    expect(result.best!.litersToBuy).toBeGreaterThan(1);
+    expect(result.itinerary).toEqual([]);
+    expect(result.verdict).not.toBe("no-refuel-needed");
+  });
 });

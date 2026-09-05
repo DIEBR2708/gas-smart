@@ -10,7 +10,8 @@ import {
   type CostContext,
 } from "./cost";
 import { rejectIllegalUturn, withAccessHint } from "./access";
-import { planCorridorSearch } from "./corridor";
+import { STATION_SEARCH_MAX_RADIUS_M, planCorridorSearch } from "./corridor";
+import { nearbyGeometricDetour } from "./nearby";
 import {
   cumulativeDistances,
   projectOntoPolyline,
@@ -72,6 +73,8 @@ export interface PlanInput {
   preferences: Preferences;
   departAt: Date;
   reports?: StationReport[];
+  /** 목적지 없이 지금 자리 주변만 검색 */
+  nearby?: boolean;
 }
 
 export interface PlanProviders {
@@ -115,7 +118,8 @@ export async function buildRefuelPlan(
 ): Promise<RefuelPlan> {
   const maxExactCandidates =
     options.maxExactCandidates ?? MAX_EXACT_DETOUR_CANDIDATES;
-  const { route, vehicle, preferences, departAt, reports = [] } = input;
+  const { route, vehicle, preferences, departAt, reports = [], nearby = false } =
+    input;
   const cum = cumulativeDistances(route.polyline);
   const congestionFactor = route.durationIncludesTraffic
     ? 1
@@ -123,10 +127,16 @@ export async function buildRefuelPlan(
 
   // 우회를 왕복으로 보면 경로에서 x만큼 떨어진 주유소의 최소 우회는 2x다.
   // 따라서 허용 우회거리의 절반이 조회해야 할 회랑 반폭이다.
-  const requestedHalfWidthM = Math.max(
-    MIN_CORRIDOR_HALF_WIDTH_M,
-    (preferences.maxDetourKm * 1000) / 2,
-  );
+  // 이 자리 주변은 왕복이 아니라 여기부터의 거리이므로 허용치를 그대로 쓴다.
+  const requestedHalfWidthM = nearby
+    ? Math.min(
+        STATION_SEARCH_MAX_RADIUS_M * 0.9,
+        Math.max(MIN_CORRIDOR_HALF_WIDTH_M, preferences.maxDetourKm * 1000),
+      )
+    : Math.max(
+        MIN_CORRIDOR_HALF_WIDTH_M,
+        (preferences.maxDetourKm * 1000) / 2,
+      );
   const corridor = planCorridorSearch(route.polyline, requestedHalfWidthM);
 
   const raw = await providers.stations.findAlongRoute(route, {
@@ -165,8 +175,10 @@ export async function buildRefuelPlan(
     }
     // 예비량 아래로 떨어져 도착하는 곳은 후보가 아니다.
     // 이미 예비량 이하면 0L까지만 허용한다.
-    const fuelLeftL =
-      vehicle.currentFuelL - proj.alongM / 1000 / vehicle.kmPerLiter;
+    const driveKm = nearby
+      ? proj.offsetM / 1000
+      : proj.alongM / 1000;
+    const fuelLeftL = vehicle.currentFuelL - driveKm / vehicle.kmPerLiter;
     const arrivalFloorL = minArrivalFuelL(vehicle);
     if (fuelLeftL + 1e-9 < arrivalFloorL) {
       excluded.push({
@@ -201,21 +213,28 @@ export async function buildRefuelPlan(
       ),
     ) || effectivePricePerLiter(1700, preferences);
 
-  const litersRequiredWithoutDetour = litersRequiredForTrip(
-    vehicle,
-    route.distanceM,
-    preferences.fillPolicy,
-  );
-  const canReachWithoutRefueling = litersRequiredWithoutDetour <= 0;
+  const nearbyFill =
+    nearby && preferences.fillPolicy.mode === "toDestination"
+      ? ({ mode: "full" } as const)
+      : preferences.fillPolicy;
+  const litersRequiredWithoutDetour = nearby
+    ? Math.max(0, vehicle.tankCapacityL - vehicle.currentFuelL)
+    : litersRequiredForTrip(vehicle, route.distanceM, preferences.fillPolicy);
+  const canReachWithoutRefueling = nearby
+    ? false
+    : litersRequiredWithoutDetour <= 0;
 
   const ctx: CostContext = {
     vehicle,
-    preferences,
+    preferences: nearby
+      ? { ...preferences, fillPolicy: nearbyFill }
+      : preferences,
     route,
     referencePriceKrwPerL,
     departAt,
     congestionFactor,
     reports,
+    nearby,
   };
 
   /*
@@ -232,15 +251,17 @@ export async function buildRefuelPlan(
   */
   const bounded = surviving
     .map((s) => {
-      const minimalDetour: Detour = {
-        extraDistanceM: s.proj.offsetM * 2,
-        extraDurationS: 0,
-        extraTollKrw: 0,
-        alongRouteM: s.proj.alongM,
-        offRouteM: s.proj.offsetM,
-        joinPoint: s.proj.point,
-        source: "geometric-estimate",
-      };
+      const minimalDetour: Detour = nearby
+        ? nearbyGeometricDetour(route.origin, s.station, s.proj)
+        : {
+            extraDistanceM: s.proj.offsetM * 2,
+            extraDurationS: 0,
+            extraTollKrw: 0,
+            alongRouteM: s.proj.alongM,
+            offRouteM: s.proj.offsetM,
+            joinPoint: s.proj.point,
+            source: "geometric-estimate",
+          };
       const lowerBound = evaluateOption(s.station, minimalDetour, ctx);
       return {
         station: s.station,
@@ -303,13 +324,17 @@ export async function buildRefuelPlan(
     cursor += batch.length;
     exactlyEvaluated += batch.length;
 
-    const detours = await providers.routes.computeDetours(
-      route,
-      batch.map((b) => b.station),
-    );
+    const detours = nearby
+      ? new Map<string, Detour>()
+      : await providers.routes.computeDetours(
+          route,
+          batch.map((b) => b.station),
+        );
 
     for (const { station, proj } of batch) {
-      const rawDetour = detours.get(station.id);
+      const rawDetour = nearby
+        ? nearbyGeometricDetour(route.origin, station, proj)
+        : detours.get(station.id);
       if (!rawDetour) continue;
       const detour = rejectIllegalUturn(rawDetour, proj, station, route);
 
@@ -436,13 +461,15 @@ export async function buildRefuelPlan(
     ? (ranked.find((r) => r.station.id === baselineOption.station.id) ?? null)
     : null;
 
-  const itinerary = planItinerary({
-    route,
-    vehicle,
-    options: ranked,
-    fillFullAtLast: preferences.fillPolicy.mode === "full",
-    destinationHoldL: destinationHoldL(vehicle, preferences.fillPolicy),
-  });
+  const itinerary = nearby
+    ? []
+    : planItinerary({
+        route,
+        vehicle,
+        options: ranked,
+        fillFullAtLast: preferences.fillPolicy.mode === "full",
+        destinationHoldL: destinationHoldL(vehicle, preferences.fillPolicy),
+      });
 
   const { verdict, headline } = decide({
     best,
@@ -452,12 +479,14 @@ export async function buildRefuelPlan(
     candidateCount: ranked.length,
     itineraryCount: itinerary.length,
     itinerary,
+    nearby,
   });
 
   return {
     route,
     vehicle,
     preferences,
+    nearby,
     litersRequiredWithoutDetour,
     canReachWithoutRefueling,
     referencePriceKrwPerL,
@@ -471,7 +500,10 @@ export async function buildRefuelPlan(
     meta: {
       stationProvider: providers.stations.label,
       routeProvider: providers.routes.label,
-      detourSource: providers.routes.isLive ? "routing-api" : "geometric-estimate",
+      detourSource:
+        nearby || !providers.routes.isLive
+          ? "geometric-estimate"
+          : "routing-api",
       computedAt: new Date().toISOString(),
       candidateCount: raw.length,
       exactlyEvaluated,
@@ -493,6 +525,7 @@ function decide(args: {
   candidateCount: number;
   itineraryCount: number;
   itinerary: RefuelPlan["itinerary"];
+  nearby?: boolean;
 }): { verdict: Verdict; headline: string } {
   const {
     best,
@@ -502,6 +535,7 @@ function decide(args: {
     candidateCount,
     itineraryCount,
     itinerary,
+    nearby,
   } = args;
 
   if (itineraryCount >= 2) {
@@ -519,12 +553,17 @@ function decide(args: {
   if (candidateCount === 0 || !best || !baseline) {
     return {
       verdict: "no-candidates",
-      headline:
-        "조건에 맞는 주유소를 경로 주변에서 찾지 못했습니다. 우회 허용치나 브랜드 조건을 넓혀 보세요.",
+      headline: nearby
+        ? "이 자리 주변에서 조건에 맞는 주유소를 찾지 못했습니다. 얼마나 멀리 볼지나 브랜드 조건을 넓혀 보세요."
+        : "조건에 맞는 주유소를 경로 주변에서 찾지 못했습니다. 우회 허용치나 브랜드 조건을 넓혀 보세요.",
     };
   }
 
-  if (canReachWithoutRefueling && preferences.fillPolicy.mode === "toDestination") {
+  if (
+    !nearby &&
+    canReachWithoutRefueling &&
+    preferences.fillPolicy.mode === "toDestination"
+  ) {
     return {
       verdict: "no-refuel-needed",
       headline:
@@ -535,7 +574,9 @@ function decide(args: {
   if (best.station.id === baseline.station.id) {
     return {
       verdict: "stay-on-route",
-      headline: `경로에서 가장 가까운 ${stationHeading(best.station.name, best.station.brand)}가 이미 최선입니다. 더 싼 곳을 찾아 우회할 이유가 없습니다.`,
+      headline: nearby
+        ? `제일 가까운 ${stationHeading(best.station.name, best.station.brand)}가 이미 제일 쌉니다. 더 멀리 갈 이유가 없습니다.`
+        : `경로에서 가장 가까운 ${stationHeading(best.station.name, best.station.brand)}가 이미 최선입니다. 더 싼 곳을 찾아 우회할 이유가 없습니다.`,
     };
   }
 
@@ -545,7 +586,9 @@ function decide(args: {
   ) {
     return {
       verdict: "marginal",
-      headline: `${stationHeading(best.station.name, best.station.brand)}가 계산상 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 저렴하지만, 연비·가격 오차를 감안하면 이득이 사라질 수 있습니다. 가까운 곳에서 넣는 편이 안전합니다.`,
+      headline: nearby
+        ? `${stationHeading(best.station.name, best.station.brand)}가 계산상 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 저렴하지만, 연비·가격 오차를 감안하면 이득이 사라질 수 있습니다. 제일 가까운 곳에서 넣는 편이 안전합니다.`
+        : `${stationHeading(best.station.name, best.station.brand)}가 계산상 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 저렴하지만, 연비·가격 오차를 감안하면 이득이 사라질 수 있습니다. 가까운 곳에서 넣는 편이 안전합니다.`,
     };
   }
 
@@ -556,6 +599,8 @@ function decide(args: {
 
   return {
     verdict: "detour-worth-it",
-    headline: `${stationHeading(best.station.name, best.station.brand)}로 ${(best.detour.extraDistanceM / 1000).toFixed(1)}km 우회하면 우회 연료비와 시간까지 계산해도 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 절약됩니다.${stockUpNote}`,
+    headline: nearby
+      ? `${stationHeading(best.station.name, best.station.brand)}는 제일 가까운 곳보다 가는 거리·시간까지 넣어도 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 쌉니다. ${(best.detour.extraDistanceM / 1000).toFixed(1)}km 가면 됩니다.${stockUpNote}`
+      : `${stationHeading(best.station.name, best.station.brand)}로 ${(best.detour.extraDistanceM / 1000).toFixed(1)}km 우회하면 우회 연료비와 시간까지 계산해도 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 절약됩니다.${stockUpNote}`,
   };
 }

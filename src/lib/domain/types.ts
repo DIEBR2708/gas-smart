@@ -341,6 +341,8 @@ export interface RefuelPlan {
   route: Route;
   vehicle: Vehicle;
   preferences: Preferences;
+  /** 목적지 없이 지금 자리 주변만 볼 때 */
+  nearby?: boolean;
   /** 우회 없이 그대로 갔을 때 필요한 최소 주유량 (L) */
   litersRequiredWithoutDetour: number;
   /** 무주유로 목적지까지 도달 가능한가 (예비량 포함) */

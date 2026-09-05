@@ -32,6 +32,7 @@ export interface SessionState {
   origin: NamedPlace | null;
   destination: NamedPlace | null;
   departAt: string | null;
+  searchMode?: "route" | "nearby";
 }
 
 function readJson<T>(key: string, fallback: T): T {

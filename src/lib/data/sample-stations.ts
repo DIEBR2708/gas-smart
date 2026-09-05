@@ -222,6 +222,36 @@ export function getSampleStations(now = new Date()): Station[] {
 export function getStationsForRoute(route: Route, now = new Date()): Station[] {
   const sampleIds = new Set(SAMPLE_ROUTE_SEEDS.map((seed) => seed.id));
   if (sampleIds.has(route.id)) return [];
+  if (route.id.startsWith("nearby:") || route.distanceM < 200) {
+    const ring: SampleRouteSeed["waypoints"] = [{ ...route.origin, name: route.origin.name }];
+    for (let i = 0; i < 8; i += 1) {
+      const rad = (i / 8) * Math.PI * 2;
+      const distM = 700 + (i % 4) * 900;
+      const dLat = (distM / 111_320) * Math.cos(rad);
+      const dLng =
+        (distM / (111_320 * Math.cos((route.origin.lat * Math.PI) / 180))) *
+        Math.sin(rad);
+      ring.push({
+        lat: route.origin.lat + dLat,
+        lng: route.origin.lng + dLng,
+        name: route.origin.name,
+      });
+    }
+    return generateForSeed(
+      {
+        id: route.id.replace(/[^a-zA-Z0-9가-힣_-]/g, "").slice(0, 40) || "nearby",
+        originName: route.origin.name,
+        destinationName: route.origin.name,
+        summary: "이 자리 주변",
+        highway: false,
+        avgSpeedKmh: 28,
+        tollKrw: 0,
+        waypoints: ring,
+      },
+      { spacingM: 800 },
+      now,
+    );
+  }
   return generateForSeed(
     {
       id: route.id.replace(/[^a-zA-Z0-9가-힣_-]/g, "").slice(0, 40) || "custom",
