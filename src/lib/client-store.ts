@@ -24,6 +24,7 @@ const KEYS = {
   reserve5Migrated: "cfn.migrated.reserve5",
   fuel20Migrated: "cfn.migrated.fuel20",
   dockPosition: "cfn.dockPosition",
+  panelLayout: "cfn.panelLayout",
 };
 
 export interface SessionState {
@@ -130,6 +131,33 @@ export function saveDockPosition(position: { x: number; y: number }) {
   writeJson(KEYS.dockPosition, {
     x: Math.round(position.x),
     y: Math.round(position.y),
+  });
+}
+
+/**
+ * 손으로 정한 화면 배분.
+ *
+ * `cardScale`은 지도 위 검색창의 배율, `sheetRatio`는 아래 패널이 차지하는
+ * 세로 비율(0이면 접힘)이다. 폰을 다시 열었을 때 매번 다시 잡게 하지 않는다.
+ */
+export interface PanelLayout {
+  cardScale: number;
+  sheetRatio: number;
+}
+
+export function loadPanelLayout(): Partial<PanelLayout> {
+  const saved = readJson<Partial<PanelLayout> | null>(KEYS.panelLayout, null);
+  if (!saved) return {};
+  const layout: Partial<PanelLayout> = {};
+  if (Number.isFinite(saved.cardScale)) layout.cardScale = saved.cardScale;
+  if (Number.isFinite(saved.sheetRatio)) layout.sheetRatio = saved.sheetRatio;
+  return layout;
+}
+
+export function savePanelLayout(layout: PanelLayout) {
+  writeJson(KEYS.panelLayout, {
+    cardScale: Number(layout.cardScale.toFixed(2)),
+    sheetRatio: Number(layout.sheetRatio.toFixed(3)),
   });
 }
 

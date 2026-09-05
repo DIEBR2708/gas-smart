@@ -8,14 +8,23 @@ import {
   FlaskConical,
   Loader2,
   Map as MapIcon,
+  Minus,
+  Plus,
   Search,
   SlidersHorizontal,
 } from "lucide-react";
 import { ApplyDock } from "@/components/apply-dock";
+import {
+  clampScale,
+  PinchScale,
+  SCALE_MAX,
+  SCALE_MIN,
+  SCALE_STEP,
+} from "@/components/pinch-scale";
 import { PlaceSearch } from "@/components/place-search";
 import { ResultPanel } from "@/components/result-panel";
 import { SettingsPanel } from "@/components/settings-panel";
-import { SheetHandle } from "@/components/sheet-handle";
+import { SHEET_DEFAULT_RATIO, SheetHandle } from "@/components/sheet-handle";
 import { SwipePages } from "@/components/swipe-pages";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
@@ -29,8 +38,10 @@ import {
   cachePlan,
   loadCachedPlan,
   loadDiscountRules,
+  loadPanelLayout,
   loadSession,
   saveDiscountRules,
+  savePanelLayout,
   saveSession,
 } from "@/lib/client-store";
 import {
@@ -86,6 +97,7 @@ function initialPlannerState(routes: Route[]) {
       ...session?.preferences,
       discountRules: session?.preferences.discountRules ?? rules,
     },
+    layout: loadPanelLayout(),
   };
 }
 
@@ -120,7 +132,13 @@ export function Planner({ routes }: Props) {
   const [tab, setTab] = useState<Tab>("result");
   /* 폰에서만 의미가 있다. lg 이상에서는 지도와 패널이 나란히 놓인다. */
   const [searchOpen, setSearchOpen] = useState(true);
-  const [sheetOpen, setSheetOpen] = useState(true);
+  const [cardScale, setCardScale] = useState(
+    () => clampScale(boot.layout.cardScale ?? 1),
+  );
+  const [sheetRatio, setSheetRatio] = useState(
+    () => boot.layout.sheetRatio ?? SHEET_DEFAULT_RATIO,
+  );
+  const layoutRef = useRef<HTMLDivElement>(null);
   const [mapPick, setMapPick] = useState<"origin" | "destination" | null>(null);
   const [userLocation, setUserLocation] = useState<LatLng | null>(null);
   const [previewRoute, setPreviewRoute] = useState<Route | null>(null);
@@ -165,6 +183,15 @@ export function Planner({ routes }: Props) {
     });
     saveDiscountRules(preferences.discountRules);
   }, [vehicle, preferences, routeId, origin, destination, departAt, searchMode]);
+
+  /* 끌고 있는 동안에는 프레임마다 값이 바뀐다. 손을 멈춘 뒤에 한 번 남긴다. */
+  useEffect(() => {
+    const timer = setTimeout(
+      () => savePanelLayout({ cardScale, sheetRatio }),
+      300,
+    );
+    return () => clearTimeout(timer);
+  }, [cardScale, sheetRatio]);
 
   /*
     계획을 다시 부르는 기준은 좌표다. 지도를 찍은 뒤 주소가 늦게 도착해 이름만
@@ -473,7 +500,10 @@ export function Planner({ routes }: Props) {
         </div>
       </header>
 
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+      <div
+        ref={layoutRef}
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row"
+      >
         {/*
           막은 지도를 덮되, 가리는 동안에도 눌러야 하는 검색창과 범례는 그 위에
           남는다. 쌓임 순서는 globals.css의 --layer-* 에 모아 두었다.
@@ -491,16 +521,12 @@ export function Planner({ routes }: Props) {
             {searchMode === "nearby" ? "주변 주유소 찾는 중" : "경로 로드중"}
           </div>
         </div>
-        <div
-          className={cn(
-            "relative min-h-[220px] lg:h-auto lg:min-h-0 lg:flex-1",
-            /*
-              패널을 내리면 지도가 남은 자리를 전부 가져간다. Leaflet은
-              컨테이너 크기 변화를 ResizeObserver로 받아 스스로 다시 그린다.
-            */
-            sheetOpen ? "h-[42dvh] shrink-0" : "h-auto flex-1 lg:flex-1",
-          )}
-        >
+        {/*
+          지도는 아래 패널이 놓아 준 자리를 전부 가져간다. 패널 높이는
+          사용자가 손잡이로 정하므로 여기서는 남은 공간을 채우기만 한다.
+          Leaflet은 컨테이너 크기 변화를 ResizeObserver로 받아 다시 그린다.
+        */}
+        <div className="relative min-h-[4rem] flex-1 lg:h-auto lg:min-h-0">
           <RouteMap
             route={displayRoute}
             options={plan?.options ?? []}
@@ -531,9 +557,13 @@ export function Planner({ routes }: Props) {
               <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
             </button>
           )}
-          <div
+          <PinchScale
+            scale={cardScale}
+            onScaleChange={setCardScale}
+            maxWidth="20.5rem"
+            inset="1.5rem"
             className={cn(
-              "pointer-events-auto absolute top-3 left-3 z-[var(--layer-map-control)] w-[min(calc(100%-1.5rem),20.5rem)] space-y-2 rounded-xl border border-border bg-background/92 p-3 shadow-lg backdrop-blur",
+              "pointer-events-auto absolute top-3 left-3 z-[var(--layer-map-control)] space-y-2 rounded-xl border border-border bg-background/92 p-3 shadow-lg backdrop-blur",
               !searchOpen && "hidden",
             )}
           >
@@ -572,6 +602,28 @@ export function Planner({ routes }: Props) {
                   이 자리에서
                 </button>
               </div>
+              {/*
+                두 손가락으로 카드를 집어 키울 수 있지만, 마우스에는 그런
+                동작이 없다. 같은 일을 하는 버튼을 함께 둔다.
+              */}
+              <button
+                type="button"
+                aria-label="검색창 작게"
+                disabled={cardScale <= SCALE_MIN}
+                onClick={() => setCardScale(clampScale(cardScale - SCALE_STEP))}
+                className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-input/40 hover:text-foreground disabled:opacity-35"
+              >
+                <Minus className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label="검색창 크게"
+                disabled={cardScale >= SCALE_MAX}
+                onClick={() => setCardScale(clampScale(cardScale + SCALE_STEP))}
+                className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-input/40 hover:text-foreground disabled:opacity-35"
+              >
+                <Plus className="size-3.5" />
+              </button>
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -585,7 +637,9 @@ export function Planner({ routes }: Props) {
                     </button>
                   }
                 />
-                <TooltipContent>접어서 지도 넓게 보기</TooltipContent>
+                <TooltipContent>
+                  접어서 지도 넓게 보기. 두 손가락으로 집으면 크기가 바뀝니다.
+                </TooltipContent>
               </Tooltip>
             </div>
             <PlaceSearch
@@ -622,7 +676,7 @@ export function Planner({ routes }: Props) {
                 }
               />
             )}
-          </div>
+          </PinchScale>
           <div className="pointer-events-none absolute top-3 right-3 z-[var(--layer-map-control)] hidden flex-col gap-1 rounded-lg border border-border bg-background/85 px-2.5 py-2 text-[11px] backdrop-blur sm:flex">
             {searchMode === "route" && (
               <Legend color="#60a5fa" label="본선 경로" />
@@ -642,22 +696,29 @@ export function Planner({ routes }: Props) {
           </div>
         </div>
 
+        {/*
+          패널 높이는 손잡이로 정한다. 폰에서만 쓰는 값이므로 lg 이상에서는
+          CSS가 auto로 되돌리고, 지도와 나란히 놓인 예전 배치를 그대로 쓴다.
+        */}
         <aside
-          className={cn(
-            "flex min-h-0 w-full flex-col overflow-hidden border-t border-border lg:w-[420px] lg:flex-none lg:border-t-0 lg:border-l xl:w-[460px]",
-            sheetOpen ? "flex-1" : "shrink-0 lg:flex-none",
-          )}
+          style={
+            {
+              "--sheet-h": sheetRatio > 0 ? `${(sheetRatio * 100).toFixed(1)}%` : "auto",
+            } as React.CSSProperties
+          }
+          className="flex h-[var(--sheet-h,auto)] min-h-0 w-full shrink-0 flex-col overflow-hidden border-t border-border lg:h-auto lg:w-[420px] lg:flex-none lg:border-t-0 lg:border-l xl:w-[460px]"
         >
           <SheetHandle
-            open={sheetOpen}
-            onChange={setSheetOpen}
+            ratio={sheetRatio}
+            onChange={setSheetRatio}
+            containerRef={layoutRef}
             label={sheetSummary}
             className="shrink-0 lg:hidden"
           />
           <div
             className={cn(
               "flex shrink-0 gap-1 border-b border-border p-2",
-              !sheetOpen && "hidden lg:flex",
+              sheetRatio === 0 && "hidden lg:flex",
             )}
           >
             <TabButton
@@ -679,7 +740,7 @@ export function Planner({ routes }: Props) {
           <SwipePages
             index={tab === "result" ? 0 : 1}
             onIndexChange={(next) => setTab(next === 0 ? "result" : "settings")}
-            className={cn(!sheetOpen && "hidden lg:block")}
+            className={cn(sheetRatio === 0 && "hidden lg:block")}
           >
             <ResultPanel
               plan={plan}
