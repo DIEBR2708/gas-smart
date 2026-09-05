@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -11,9 +11,12 @@ import { cn } from "@/lib/utils";
  * 때와 후보 목록을 길게 훑고 싶을 때가 번갈아 오므로, 두 단계로 접었다
  * 펴는 것만으로는 부족하다. 끌어서 원하는 높이에 둔다.
  *
- * 끌기는 높이만 바꾼다. 접고 펴는 것은 오른쪽 버튼만 한다. 끌다가 손이
- * 미끄러져 패널이 사라지거나, 높이를 잡으려 짚었을 뿐인데 접히면 방금 보던
- * 목록을 잃는다. 없어지는 동작은 명시적으로 누를 때만 일어나야 한다.
+ * 끌기는 높이만 바꾼다. 끌다가 손이 미끄러져 패널이 사라지거나, 높이를
+ * 잡으려 짚었을 뿐인데 접히면 방금 보던 목록을 잃는다. 없어지는 동작은
+ * 명시적으로 누를 때만 일어나야 한다.
+ *
+ * 이 손잡이는 패널이 펴져 있을 때만 놓인다. 접으면 화면 맨 아래 탭 막대만
+ * 남고, 다시 펴는 일은 그 탭이 맡는다. 그래서 여기 있는 버튼은 접기만 한다.
  *
  * 높이는 화면 대비 비율로 다룬다. 회전하거나 주소창이 접혀 화면 높이가
  * 바뀌어도 손으로 정한 배분이 유지된다.
@@ -30,33 +33,29 @@ export const SHEET_DEFAULT_RATIO = 0.58;
 const DRAG_SLOP_PX = 6;
 
 interface Props {
-  /** 0이면 접힌 상태. 그 외에는 세로 배분 비율 */
+  /** 세로 배분 비율. 펴져 있을 때만 이 손잡이가 놓이므로 늘 0보다 크다. */
   ratio: number;
   onChange: (ratio: number) => void;
   /**
-   * 접기와 펴기를 오간다.
+   * 패널을 접는다.
    *
-   * 접기 전 높이를 기억하는 일은 이 손잡이 밖에서 한다. 아래 탭 막대도 같은
-   * 자리로 되돌려야 하는데, 기억이 여기 있으면 두 벌이 생긴다.
+   * 접기 전 높이를 기억하는 일은 이 손잡이 밖에서 한다. 다시 펴는 것은 아래
+   * 탭 막대가 맡는데, 기억이 여기 있으면 두 벌이 생긴다.
    */
-  onToggle: () => void;
+  onCollapse: () => void;
   /** 높이를 재는 기준이 되는 세로 배치 컨테이너 */
   containerRef: React.RefObject<HTMLDivElement | null>;
-  /** 접혀 있을 때 손잡이에 남길 한 줄 요약 */
-  label: string;
   className?: string;
 }
 
 export function SheetHandle({
   ratio,
   onChange,
-  onToggle,
+  onCollapse,
   containerRef,
-  label,
   className,
 }: Props) {
   const dragRef = useRef<{ y: number; travel: number } | null>(null);
-  const open = ratio > 0;
 
   const ratioAt = (clientY: number): number => {
     const box = containerRef.current?.getBoundingClientRect();
@@ -66,7 +65,6 @@ export function SheetHandle({
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!open) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     dragRef.current = { y: event.clientY, travel: 0 };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -89,19 +87,16 @@ export function SheetHandle({
   };
 
   const nudge = (delta: number) => {
-    if (!open) return;
     onChange(
       Math.min(Math.max(ratio + delta, SHEET_MIN_RATIO), SHEET_MAX_RATIO),
     );
   };
 
-  const Chevron = open ? ChevronDown : ChevronUp;
-
   return (
     <div className={cn("flex items-center gap-2 pr-1.5 pl-3", className)}>
       <div
         role="slider"
-        tabIndex={open ? 0 : -1}
+        tabIndex={0}
         aria-label="결과 패널 높이"
         aria-orientation="vertical"
         aria-valuemin={Math.round(SHEET_MIN_RATIO * 100)}
@@ -117,26 +112,21 @@ export function SheetHandle({
           event.preventDefault();
           nudge(event.key === "ArrowUp" ? 0.08 : -0.08);
         }}
-        className={cn(
-          "flex min-w-0 flex-1 touch-none items-center gap-2 py-2 outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/50",
-          open && "cursor-grab active:cursor-grabbing",
-        )}
+        className="flex min-w-0 flex-1 touch-none cursor-grab items-center gap-2 py-2 outline-none select-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-ring/50"
       >
-        {open && (
-          <span className="h-1 w-8 shrink-0 rounded-full bg-border" aria-hidden />
-        )}
+        <span className="h-1 w-8 shrink-0 rounded-full bg-border" aria-hidden />
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {open ? "끌어서 높이 조절" : label}
+          끌어서 높이 조절
         </span>
       </div>
       <button
         type="button"
-        aria-expanded={open}
-        aria-label={open ? "결과 패널 접기" : "결과 패널 펴기"}
-        onClick={onToggle}
+        aria-expanded
+        aria-label="결과 패널 접기"
+        onClick={onCollapse}
         className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-input/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
       >
-        <Chevron className="size-4" />
+        <ChevronDown className="size-4" />
       </button>
     </div>
   );

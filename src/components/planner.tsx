@@ -59,7 +59,6 @@ import type {
   Route,
   Vehicle,
 } from "@/lib/domain/types";
-import { perLiter, stationHeading } from "@/lib/format";
 import { fetchPlan, reverseGeocodePlace, type PlanResponse } from "@/lib/plan-client";
 import { changedSettingLabels } from "@/lib/settings-diff";
 import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
@@ -201,24 +200,21 @@ export function Planner({ routes }: Props) {
   const activeTab: Tab = tabs.includes(tab) ? tab : "result";
   const collapsed = phoneLayout && sheetRatio === 0;
 
-  const toggleSheet = useCallback(() => {
-    setSheetRatio((current) => (current > 0 ? 0 : openRatioRef.current));
-  }, []);
-
   /**
    * 아래 탭을 눌렀을 때.
    *
-   * 탭은 접지 않는다. 접는 것은 손잡이 오른쪽 버튼만 한다. 보려고 누른
-   * 탭이 방금 보던 목록을 치워 버리면 안 된다. 다만 접힌 상태에서 탭을
-   * 누른 것은 그 내용을 보자는 뜻이므로 접기 전 높이로 펴 준다.
+   * 다른 탭으로 옮기는 것만으로는 접지 않는다. 보려고 누른 탭이 방금 보던
+   * 목록을 치워 버리면 안 된다. 다만 지금 보고 있는 탭을 다시 누른 것은
+   * 치우자는 뜻이므로 접고, 접힌 상태에서 누르면 접기 전 높이로 펴 준다.
    */
   const selectTab = useCallback(
     (next: Tab) => {
       setTab(next);
       if (!phoneLayout) return;
       if (sheetRatio === 0) setSheetRatio(openRatioRef.current);
+      else if (next === activeTab) setSheetRatio(0);
     },
-    [phoneLayout, sheetRatio],
+    [phoneLayout, sheetRatio, activeTab],
   );
 
   const requestSeq = useRef(0);
@@ -541,14 +537,6 @@ export function Planner({ routes }: Props) {
     searchMode === "nearby"
       ? (origin?.name ?? "위치 지정")
       : `${origin?.name ?? "출발"} → ${destination?.name ?? "도착"}`;
-  const sheetSummary = plan?.best
-    ? `${perLiter(plan.best.effectivePriceKrwPerL)} · ${stationHeading(
-        plan.best.station.name,
-        plan.best.station.brand,
-      )}`
-    : loading
-      ? "계산 중"
-      : (error ?? "추천 결과");
 
   return (
     <div className="flex h-dvh min-h-0 flex-col overflow-hidden">
@@ -759,10 +747,9 @@ export function Planner({ routes }: Props) {
           <SheetHandle
             ratio={sheetRatio}
             onChange={setSheetRatio}
-            onToggle={toggleSheet}
+            onCollapse={() => setSheetRatio(0)}
             containerRef={layoutRef}
-            label={sheetSummary}
-            className="shrink-0 lg:hidden"
+            className={cn("shrink-0 lg:hidden", collapsed && "hidden")}
           />
 
           {/*
