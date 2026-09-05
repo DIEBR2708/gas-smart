@@ -35,12 +35,12 @@ const FILL_MODES: { mode: FillPolicy["mode"]; label: string; hint: string }[] = 
   {
     mode: "fixedBudget",
     label: "금액 지정",
-    hint: "정해진 금액만큼 넣습니다. 모자란 연료는 시세로 비용에 더합니다.",
+    hint: "정해진 금액만큼 넣습니다. 다만 목적지에서 예비량이 남지 않으면 그만큼은 더 넣습니다.",
   },
   {
     mode: "fixedLiters",
     label: "리터 지정",
-    hint: "정해진 양만 넣습니다.",
+    hint: "정해진 양만 넣습니다. 다만 목적지에서 예비량이 남지 않으면 그만큼은 더 넣습니다.",
   },
 ];
 
@@ -456,7 +456,7 @@ export function SettingsPanel({
         <Field
           label="현재 연료량"
           value={`${liters(vehicle.currentFuelL)} · ${tankPercent}%`}
-          hint="이 값과 예비량이 후보 범위를 결정합니다. 예비량 아래로 떨어져 도착하는 주유소는 목록에 올리지 않습니다."
+          hint="이 값과 예비량이 후보 범위를 결정합니다. 예비량 아래로 떨어져 도착하는 주유소는 목록에 올리지 않고, 목적지에서도 예비량은 남도록 주유량을 잡습니다."
         >
           <Slider
             value={[vehicle.currentFuelL]}

@@ -310,14 +310,15 @@ describe("evaluateOption", () => {
     );
   });
 
-  it("예산이 부족하면 모자란 연료를 시세로 비용에 더한다", () => {
+  it("예산이 모자라도 목적지 예비량이 남는 만큼은 넣는다", () => {
     const preferences: Preferences = {
       ...DEFAULT_PREFERENCES,
       cardDiscountKrwPerL: 0,
       fillPolicy: { mode: "fixedBudget", krw: 10_000 },
     };
+    const vehicle = { ...DEFAULT_VEHICLE, kmPerLiter: 10, currentFuelL: 5 };
     const c: CostContext = {
-      vehicle: { ...DEFAULT_VEHICLE, kmPerLiter: 10, currentFuelL: 5 },
+      vehicle,
       preferences,
       route: straightRoute(150),
       referencePriceKrwPerL: 1700,
@@ -325,13 +326,45 @@ describe("evaluateOption", () => {
     };
     const option = evaluateOption(testStation(), testDetour(), c)!;
 
-    // 10,000원 / 1,700원 = 약 5.88L 만 넣으므로 목적지 도착 전에 바닥난다.
-    expect(option.litersToBuy).toBeCloseTo(10_000 / 1700, 4);
-    expect(option.shortfallFuelL).toBeGreaterThan(0);
-    expect(option.shortfallCostKrw).toBeCloseTo(1700 * option.shortfallFuelL, 4);
-    expect(option.warnings.map((w) => w.code)).toContain(
+    /*
+      1만원어치는 약 5.88L라 목적지 전에 바닥난다. 예비량은 흥정 대상이
+      아니므로 주입량을 예비량이 남는 선까지 끌어올린다. 예산은 하한을
+      정하는 데 쓰이지 않고, 그 위로만 존중된다.
+    */
+    expect(option.litersToBuy).toBeGreaterThan(10_000 / 1700);
+    expect(option.fuelAtDestinationL).toBeGreaterThanOrEqual(
+      vehicle.reserveL - 1e-6,
+    );
+    expect(option.shortfallFuelL).toBeCloseTo(0, 6);
+    expect(option.warnings.map((w) => w.code)).not.toContain(
       "insufficient-to-destination",
     );
+  });
+
+  it("탱크가 한 번에 담을 수 없으면 그때만 부족분을 알린다", () => {
+    const vehicle = {
+      ...DEFAULT_VEHICLE,
+      kmPerLiter: 10,
+      tankCapacityL: 30,
+      currentFuelL: 5,
+      reserveL: 5,
+    };
+    const c: CostContext = {
+      vehicle,
+      preferences: { ...DEFAULT_PREFERENCES, fillPolicy: { mode: "full" } },
+      route: straightRoute(500),
+      referencePriceKrwPerL: 1700,
+      departAt: DEPART_AT,
+    };
+    const option = evaluateOption(testStation(), testDetour(), c)!;
+
+    // 500km에 50L가 드는데 탱크는 30L다. 적게 넣어서가 아니라 못 담아서다.
+    expect(option.shortfallFuelL).toBeGreaterThan(0);
+    expect(option.shortfallCostKrw).toBeCloseTo(1700 * option.shortfallFuelL, 4);
+    const message = option.warnings.find(
+      (w) => w.code === "insufficient-to-destination",
+    )?.message;
+    expect(message).toMatch(/나눠 넣어야/);
   });
 
   it("싼 가격이 우회 비용을 못 이기면 더 비싼 근거리 주유소가 이긴다", () => {

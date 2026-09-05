@@ -165,6 +165,41 @@ describe("buildRefuelPlan", () => {
     expect(result.meta.detourSource).toBe("geometric-estimate");
   });
 
+  /*
+    예비량은 어느 주입 정책에서도 흥정 대상이 아니다.
+
+    금액·리터를 직접 정하는 정책은 목적지 잔량을 보지 않으므로, 값을 바꾸면
+    조용히 예비량을 헐어 '더 싼' 계획을 만들 수 있다. 정책마다 걸어 둔다.
+  */
+  it.each([
+    ["필요한 만큼", { mode: "toDestination" } as const],
+    ["가득", { mode: "full" } as const],
+    ["금액 지정", { mode: "fixedBudget", krw: 10_000 } as const],
+    ["리터 지정", { mode: "fixedLiters", liters: 5 } as const],
+  ])("%s: 모든 후보가 목적지에 예비량을 남긴다", async (_label, fillPolicy) => {
+    const vehicle = { ...DEFAULT_VEHICLE, currentFuelL: 8, reserveL: 6 };
+    const result = await buildRefuelPlan(
+      {
+        route,
+        vehicle,
+        preferences: { ...DEFAULT_PREFERENCES, fillPolicy },
+        departAt: DEPART_AT,
+      },
+      providers,
+    );
+
+    expect(result.options.length).toBeGreaterThan(0);
+    for (const option of result.options) {
+      // 탱크가 한 번에 담을 수 없는 경우만 예외다. 그때는 나눠 넣기가 받는다.
+      const capped = option.warnings.some((w) => w.code === "tank-capped");
+      if (capped) continue;
+      expect(option.fuelAtDestinationL).toBeGreaterThanOrEqual(
+        vehicle.reserveL - 1e-6,
+      );
+      expect(option.shortfallFuelL).toBeCloseTo(0, 6);
+    }
+  });
+
   it("조회 범위와 계산 범위를 숨기지 않고 보고한다", async () => {
     const result = await plan();
     expect(result.meta.candidateCount).toBeGreaterThan(result.options.length);

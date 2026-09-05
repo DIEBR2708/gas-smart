@@ -242,21 +242,45 @@ export function evaluateOption(
     ctx.nearby && preferences.fillPolicy.mode === "toDestination"
       ? ({ mode: "full" } as const)
       : preferences.fillPolicy;
+  const holdL = destinationHoldL(vehicle, fillPolicy);
+
+  /*
+    예비량은 흥정 대상이 아니다.
+
+    "3만원어치"나 "20L"처럼 주입량을 직접 정하는 정책은 목적지 잔량을 보지
+    않는다. 그대로 두면 예비량 아래로 도착하는 계획을 최적이라고 내놓고,
+    모자란 만큼은 나중에 시세로 사는 비용으로 환산해 순위에 반영할 뿐이었다.
+    싸게 넣었다는 숫자가 사실은 예비량을 헐어서 만든 것일 수 있다는 뜻이다.
+
+    그래서 목적지에서 예비량이 남는 데 필요한 양을 하한으로 둔다. 사용자가
+    정한 양은 이 아래로만 못 갈 뿐, 위로는 그대로 존중한다. 탱크가 작아
+    물리적으로 불가능하면 그건 하한이 아니라 한 번에 못 간다는 뜻이고,
+    tankCapped와 부족분 경고가 그 사실을 그대로 알린다.
+
+    나눠 넣기(forcedLiters)는 예외다. 중간 급유는 다음 주유소까지만 가면
+    되므로, 매 정차마다 목적지 예비량을 채우게 하면 나누는 의미가 없어진다.
+    마지막 정차에서 예비량을 맞추는 일은 itinerary가 따로 책임진다.
+
+    이 자리 주변 검색(nearby)도 예외다. 갈 목적지가 없으니 채울 목표도 없다.
+  */
+  const litersToHoldReserveL = Math.max(0, totalTripKm / e + holdL - vehicle.currentFuelL);
   const desiredL =
     ctx.forcedLiters !== undefined
       ? ctx.forcedLiters
-      : desiredLitersForPolicy(fillPolicy, {
-          totalTripKm,
-          vehicle,
-          maxFillableL,
-          effectivePriceKrwPerL: effectivePrice,
-        });
+      : Math.max(
+          ctx.nearby ? 0 : litersToHoldReserveL,
+          desiredLitersForPolicy(fillPolicy, {
+            totalTripKm,
+            vehicle,
+            maxFillableL,
+            effectivePriceKrwPerL: effectivePrice,
+          }),
+        );
   const litersToBuy = Math.min(desiredL, maxFillableL);
   const tankCapped = desiredL > maxFillableL + 1e-6;
 
   const fuelAtDestinationL =
     vehicle.currentFuelL + litersToBuy - totalTripKm / e;
-  const holdL = destinationHoldL(vehicle, fillPolicy);
   const surplusFuelL = Math.max(0, fuelAtDestinationL - holdL);
   const shortfallFuelL = Math.max(0, holdL - fuelAtDestinationL);
 
@@ -312,7 +336,11 @@ export function evaluateOption(
     warnings.push({
       code: "insufficient-to-destination",
       severity: "warn",
-      message: `이 계획만으로는 목적지에서 예비량이 ${shortfallFuelL.toFixed(1)}L 부족합니다. 추가 주유가 필요합니다.`,
+      // 주입량은 이미 예비량을 채우는 선까지 올려 둔다. 그래도 모자라면
+      // 사용자가 적게 넣어서가 아니라 탱크가 한 번에 담을 수 없다는 뜻이다.
+      message: tankCapped
+        ? `탱크를 가득 채워도 목적지 예비량이 ${shortfallFuelL.toFixed(1)}L 모자랍니다. 한 번에는 갈 수 없어 나눠 넣어야 합니다.`
+        : `이 계획만으로는 목적지에서 예비량이 ${shortfallFuelL.toFixed(1)}L 부족합니다. 추가 주유가 필요합니다.`,
     });
   }
 
