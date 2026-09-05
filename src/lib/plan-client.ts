@@ -8,6 +8,7 @@ import type {
   StationReport,
   Vehicle,
 } from "./domain/types";
+import { isNativeApp } from "./platform";
 
 export interface PlanResponse {
   plan: RefuelPlan;
@@ -43,6 +44,8 @@ export async function fetchPlan(
   signal?: AbortSignal,
   handlers: PlanStreamHandlers = {},
 ): Promise<PlanResponse> {
+  if (isNativeApp()) return runPlanOnDevice(body, signal, handlers);
+
   const res = await fetch("/api/plan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -60,6 +63,53 @@ export async function fetchPlan(
   const payload = json as PlanResponse;
   if (payload.plan?.route) handlers.onRoute?.(payload.plan.route);
   return payload;
+}
+
+/**
+ * 앱 안에서 직접 계산한다.
+ *
+ * 서버가 없으니 스트림도 없다. 엔진이 내보내는 단계를 그대로 콜백으로 넘기면
+ * 되므로, 웹에서 NDJSON을 만들고 다시 파싱하던 왕복이 통째로 사라진다.
+ *
+ * 엔진은 필요할 때만 불러온다. 브라우저 번들에 오피넷·좌표 변환까지 들어갈
+ * 이유가 없다.
+ */
+async function runPlanOnDevice(
+  body: PlanRequest,
+  signal: AbortSignal | undefined,
+  handlers: PlanStreamHandlers,
+): Promise<PlanResponse> {
+  const [{ isRejection, preparePlan }, { bootstrapNative }] = await Promise.all([
+    import("./engine/plan-engine"),
+    import("./native-bootstrap"),
+  ]);
+  bootstrapNative();
+
+  const prepared = await preparePlan(body);
+  if (isRejection(prepared)) throw new Error(prepared.error);
+
+  let plan: PlanResponse | null = null;
+  let failure: string | null = null;
+
+  await prepared.emitAll((message) => {
+    if (message.type === "error") {
+      failure = message.error;
+      return;
+    }
+    if (message.type === "route") {
+      handlers.onRoute?.(message.route);
+      return;
+    }
+    plan = {
+      plan: message.plan,
+      shapes: message.shapes,
+      dataMode: message.dataMode,
+    };
+    handlers.onPlan?.(plan);
+  }, signal);
+
+  if (!plan) throw new Error(failure ?? "추천 계산에 실패했습니다.");
+  return plan;
 }
 
 async function readPlanStream(
@@ -116,10 +166,29 @@ export interface PlaceSearchResponse {
   source: "kakao" | "gazetteer" | "mixed" | "device" | "nominatim";
 }
 
+async function placesEngine() {
+  const [engine, { bootstrapNative }] = await Promise.all([
+    import("./engine/places-engine"),
+    import("./native-bootstrap"),
+  ]);
+  bootstrapNative();
+  return engine;
+}
+
 export async function searchPlaces(
   query: string,
   signal?: AbortSignal,
 ): Promise<NamedPlace[]> {
+  if (isNativeApp()) {
+    try {
+      const { lookupPlaces } = await placesEngine();
+      const places = (await lookupPlaces(query)).places;
+      return places.length > 0 ? places : searchGazetteer(query);
+    } catch {
+      return searchGazetteer(query);
+    }
+  }
+
   try {
     const res = await fetch(`/api/places?q=${encodeURIComponent(query)}`, {
       signal,
@@ -139,6 +208,15 @@ export async function reverseGeocodePlace(
   lng: number,
   signal?: AbortSignal,
 ): Promise<NamedPlace | null> {
+  if (isNativeApp()) {
+    try {
+      const { lookupCoordinate } = await placesEngine();
+      return (await lookupCoordinate(lat, lng)).places[0] ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   const res = await fetch(`/api/places?lat=${lat}&lng=${lng}`, {
     signal: signal ?? AbortSignal.timeout(6_000),
   });

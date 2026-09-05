@@ -1,4 +1,5 @@
 import type { FuelKind } from "@/lib/domain/types";
+import { kakaoRestApiKey, opinetCertKey } from "@/lib/runtime-keys";
 import { KakaoRouteProvider } from "./kakao/route-provider";
 import { MockRouteProvider } from "./mock/route-provider";
 import { MockStationProvider } from "./mock/station-provider";
@@ -59,8 +60,8 @@ export function resolveProviders(
   fuelKind: FuelKind,
   departAt?: Date,
 ): ProviderSet {
-  const opinetKey = process.env.OPINET_CERT_KEY?.trim();
-  const kakaoKey = process.env.KAKAO_REST_API_KEY?.trim();
+  const opinetKey = opinetCertKey();
+  const kakaoKey = kakaoRestApiKey();
 
   const liveStations = opinetKey
     ? new OpinetStationProvider(opinetKey)

@@ -1,5 +1,3 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { haversineM } from "@/lib/domain/geo";
 import type { Brand, FuelKind, LatLng, Station } from "@/lib/domain/types";
 import { displayStationName } from "@/lib/format";
@@ -8,6 +6,7 @@ import {
   katecToWgs84,
   toBrand,
 } from "./around-all";
+import { catalogStore } from "./catalog-store";
 
 export const FUEL_PREFETCH_ORDER: FuelKind[] = [
   "gasoline",
@@ -50,22 +49,18 @@ export function cellId(center: LatLng, fuelKind: FuelKind): string {
   return `${center.lat.toFixed(3)}:${center.lng.toFixed(3)}:${fuelKind}`;
 }
 
-export function catalogFilePath(date = kstDateKey()): string {
-  return path.join(process.cwd(), ".data", `opinet-prices-${date}.json`);
-}
-
 export class DailyPriceCatalog {
   readonly date: string;
   private readonly cells = new Set<string>();
   private readonly fetchCenters: { point: LatLng; fuelKind: FuelKind }[] = [];
   private readonly stations = new Map<string, CatalogStation>();
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
-  private readonly persistToDisk: boolean;
+  private readonly persist: boolean;
   private calls = 0;
 
-  constructor(date = kstDateKey(), persistToDisk = true) {
+  constructor(date = kstDateKey(), persist = true) {
     this.date = date;
-    this.persistToDisk = persistToDisk;
+    this.persist = persist;
   }
 
   get stationCount(): number {
@@ -259,7 +254,7 @@ export class DailyPriceCatalog {
   }
 
   scheduleSave(): void {
-    if (!this.persistToDisk) return;
+    if (!this.persist) return;
     if (this.persistTimer) clearTimeout(this.persistTimer);
     this.persistTimer = setTimeout(() => {
       void this.saveNow();
@@ -267,25 +262,26 @@ export class DailyPriceCatalog {
   }
 
   async saveNow(): Promise<void> {
-    if (!this.persistToDisk) return;
-    const file = catalogFilePath(this.date);
-    await mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, JSON.stringify(this.snapshot()), "utf8");
+    if (!this.persist) return;
+    try {
+      await catalogStore().save(this.date, this.snapshot());
+    } catch {
+      // 저장에 실패해도 오늘 받은 값은 메모리에 남아 있다. 조회를 막을 이유는 없다.
+    }
   }
 }
 
 export async function loadCatalogForToday(
-  persistToDisk = true,
+  persist = true,
 ): Promise<DailyPriceCatalog> {
   const date = kstDateKey();
-  const catalog = new DailyPriceCatalog(date, persistToDisk);
-  if (!persistToDisk) return catalog;
+  const catalog = new DailyPriceCatalog(date, persist);
+  if (!persist) return catalog;
   try {
-    const raw = await readFile(catalogFilePath(date), "utf8");
-    const parsed = JSON.parse(raw) as CatalogSnapshot;
-    catalog.applySnapshot(parsed);
+    const parsed = await catalogStore().load(date);
+    if (parsed) catalog.applySnapshot(parsed);
   } catch {
-    // 오늘 파일이 없으면 빈 목록으로 시작한다.
+    // 오늘 저장분이 없으면 빈 목록으로 시작한다.
   }
   return catalog;
 }

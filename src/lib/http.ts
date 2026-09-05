@@ -23,14 +23,42 @@ export async function mapPool<T, R>(
   return out;
 }
 
+/**
+ * 외부 API로 나가는 유일한 통로.
+ *
+ * 오피넷과 카카오는 `Access-Control-Allow-Origin`을 보내지 않는다. 브라우저는
+ * 그 응답을 받고도 JS에 넘겨주지 않는다. 서버에서 부를 때 되는 이유는 서버가
+ * 브라우저가 아니어서다.
+ *
+ * 안드로이드 앱에는 대신 불러 줄 서버가 없다. 그래서 웹뷰의 fetch가 아니라
+ * 안드로이드 네이티브 HTTP로 내보낸다. 역시 브라우저가 아니므로 같은 이유로
+ * 통한다. 어느 경로로 나가든 호출하는 쪽은 Response 하나만 본다.
+ */
+type NativeHttp = (
+  url: string,
+  headers: Record<string, string> | undefined,
+  timeoutMs: number,
+) => Promise<Response>;
+
+let nativeHttp: NativeHttp | null = null;
+
+/** 네이티브 부트스트랩이 시작할 때 한 번 꽂는다. */
+export function setNativeHttp(impl: NativeHttp | null): void {
+  nativeHttp = impl;
+}
+
 export async function fetchOutbound(
   url: string | URL,
   init: { headers?: Record<string, string>; timeoutMs?: number } = {},
 ): Promise<Response> {
+  const timeoutMs = init.timeoutMs ?? 6_000;
   try {
+    if (nativeHttp) {
+      return await nativeHttp(String(url), init.headers, timeoutMs);
+    }
     return await fetch(url, {
       headers: init.headers,
-      signal: AbortSignal.timeout(init.timeoutMs ?? 6_000),
+      signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
     });
   } catch {

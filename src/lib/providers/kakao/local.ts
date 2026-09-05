@@ -1,9 +1,10 @@
 import { haversineM } from "@/lib/domain/geo";
 import type { NamedPlace } from "@/lib/domain/types";
+import { fetchOutbound } from "@/lib/http";
 
 /**
  * 카카오 로컬 REST (주소·키워드·좌표 → 주소).
- * REST 키는 서버에서만 읽는다.
+ * 웹에서는 서버가, 안드로이드 앱에서는 앱 자신이 키를 들고 부른다.
  */
 
 const KEYWORD_URL = "https://dapi.kakao.com/v2/local/search/keyword.json";
@@ -32,7 +33,7 @@ interface KakaoCoordResponse {
   }[];
 }
 
-function headers(key: string): HeadersInit {
+function headers(key: string): Record<string, string> {
   return { Authorization: `KakaoAK ${key}` };
 }
 
@@ -160,9 +161,9 @@ let kakaoLocalDisabled = false;
 async function fetchJson<T>(url: string, key: string): Promise<T | null> {
   if (kakaoLocalDisabled) return null;
   try {
-    const res = await fetch(url, {
+    const res = await fetchOutbound(url, {
       headers: headers(key),
-      signal: AbortSignal.timeout(5_000),
+      timeoutMs: 5_000,
     });
     if (res.status === 403) {
       kakaoLocalDisabled = true;
