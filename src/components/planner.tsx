@@ -305,7 +305,7 @@ export function Planner({ routes }: Props) {
                 {fromCache
                   ? "캐시된 계획"
                   : isSample
-                    ? "샘플 데이터"
+                    ? "가상 주유소"
                     : "실시간 데이터"}
               </Badge>
             </TooltipTrigger>
@@ -313,7 +313,7 @@ export function Planner({ routes }: Props) {
               {fromCache
                 ? "통신에 실패해 기기에 저장해 둔 마지막 결과를 보여 줍니다."
                 : isSample
-                  ? "오피넷·카카오 API 키가 없어 합성 샘플 데이터로 동작합니다. 계산 로직은 실데이터와 동일합니다."
+                  ? "오피넷 인증키가 없어 주유소를 합성해서 보여 줍니다. 지도 위 위치와 이름은 실제가 아닙니다. .env.local에 OPINET_CERT_KEY를 넣으면 실제 주유소로 바뀝니다."
                   : "오피넷 유가와 카카오모빌리티 경로를 실시간으로 조회하고 있습니다."}
             </TooltipContent>
           </Tooltip>
@@ -455,6 +455,7 @@ export function Planner({ routes }: Props) {
               onSelect={handleSelect}
               fromCache={fromCache}
               cachedAt={cachedAt}
+              sampleStations={isSample && !fromCache}
             />
             <SettingsPanel
               vehicle={vehicle}

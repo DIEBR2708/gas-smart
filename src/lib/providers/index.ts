@@ -19,6 +19,16 @@ export interface ProviderSet {
   anyLive: boolean;
 }
 
+/**
+ * 주유소가 실제 위치인지.
+ *
+ * 경로가 실데이터라도 주유소가 합성이면 지도 위 핀은 존재하지 않는 자리다.
+ * 그걸 실시간이라고 말하면 사용자는 좌표가 깨진 줄로 안다.
+ */
+export function stationsAreReal(providers: ProviderSet): boolean {
+  return providers.stations.isLive && !stationsUsedSampleFallback(providers.stations);
+}
+
 class LiveStationsWithSampleFallback implements StationProvider {
   readonly id: string;
   readonly label: string;

@@ -32,6 +32,7 @@ interface Props {
   onSelect: (id: string) => void;
   fromCache?: boolean;
   cachedAt?: string | null;
+  sampleStations?: boolean;
 }
 
 function compareSaving(option: RankedOption, baseline: RankedOption | null) {
@@ -61,6 +62,7 @@ export function ResultPanel({
   onSelect,
   fromCache,
   cachedAt,
+  sampleStations,
 }: Props) {
   if (error && !plan) {
     const unreachable = isUnreachableByCarMessage(error);
@@ -112,6 +114,16 @@ export function ResultPanel({
             목적지까지 그냥 가도 연료가 남고, 도착지 근처에도 주유소가 있습니다.
             아래는 그래도 넣고 싶을 때 비교입니다.
           </p>
+        </div>
+      )}
+      {sampleStations && (
+        <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            오피넷 인증키가 없어 주유소를 지어냈습니다. 지도 위 위치와 이름,
+            가격 모두 실제가 아닙니다. <code>.env.local</code>에{" "}
+            <code>OPINET_CERT_KEY</code>를 넣으면 실제 주유소로 바뀝니다.
+          </span>
         </div>
       )}
       {isStraightFallbackRoute(plan.route) && (

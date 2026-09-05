@@ -26,7 +26,7 @@ import type {
   StationReport,
   Vehicle,
 } from "@/lib/domain/types";
-import { resolveProviders, stationsUsedSampleFallback } from "@/lib/providers";
+import { resolveProviders, stationsAreReal } from "@/lib/providers";
 
 /**
  * 추천 계산은 서버에서 한다.
@@ -318,10 +318,7 @@ export async function POST(request: Request) {
     const payload = {
       plan,
       shapes,
-      dataMode:
-        stationsUsedSampleFallback(providers.stations) || !providers.anyLive
-          ? "sample"
-          : "live",
+      dataMode: stationsAreReal(providers) ? "live" : "sample",
     };
     if (plan.options.length > 0 && !isStraightFallbackRoute(plan.route)) {
       if (planResponseCache.size > 80) {
