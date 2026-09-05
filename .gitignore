@@ -47,3 +47,17 @@ next-env.d.ts
 
 # 당일 오피넷 유가 캐시
 /.data
+
+# 안드로이드 APK 빌드
+# 정적 export 결과. npm run build:app 이 다시 만든다.
+/out
+# Gradle이 만드는 것들. android/ 자체는 커밋한다. 권한과 설정이 거기 있다.
+/android/.gradle
+/android/build
+/android/app/build
+/android/local.properties
+/android/capacitor-cordova-android-plugins
+# cap sync 가 out/ 에서 복사해 넣는다. 소스가 아니다.
+/android/app/src/main/assets/public
+/android/app/src/main/assets/capacitor.config.json
+/android/app/src/main/assets/capacitor.plugins.json
