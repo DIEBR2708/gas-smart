@@ -18,6 +18,7 @@ import {
   type Projection,
 } from "./geo";
 import { stationHeading } from "@/lib/format";
+import { abortError } from "@/lib/http";
 import { planItinerary } from "./itinerary";
 import { congestionFactorAt } from "./traffic";
 import type {
@@ -39,8 +40,11 @@ import type {
  * 카카오 다중 경유지 길찾기는 1일 5,000건이므로 사용자 한 명이 수십 건을
  * 태우면 금방 쿼터가 마른다. 다만 이 상한에 걸려 계산을 멈추면 더 나은
  * 후보를 못 본 것일 수 있으므로 `optimalityGuaranteed`로 표시한다.
+ *
+ * 경유 길찾기는 12건까지 한꺼번에 나가므로, 여기까지가 왕복 한 번으로 끝나는
+ * 크기다. 이보다 늘리면 호출이 두 바퀴가 되어 대기 시간이 그대로 두 배가 된다.
  */
-const MAX_EXACT_DETOUR_CANDIDATES = 24;
+const MAX_EXACT_DETOUR_CANDIDATES = 12;
 
 /**
  * 하한값 가지치기가 이 수보다 적게 남기지 않도록 하는 하한.
@@ -102,6 +106,39 @@ export interface PlanProviders {
 export interface PlanOptions {
   maxExactCandidates?: number;
   disablePruning?: boolean;
+  /**
+   * `estimate`면 경유 길찾기를 한 건도 치지 않고 직선 왕복으로만 우회를 잰다.
+   * 본선 경로가 나온 직후 순위를 먼저 보여주기 위한 1차 계산에 쓴다.
+   */
+  detourMode?: "estimate" | "exact";
+  /**
+   * 사용자가 이미 고른 주유소. 정밀 계산 순서의 맨 앞으로 당긴다.
+   * 상한에 걸려 잘리더라도 이 주유소만큼은 실제 경유 경로가 나온다.
+   */
+  priorityStationId?: string;
+  /** 출발지·도착지가 바뀌어 이 계산이 쓸모없어지면 끊는다. */
+  signal?: AbortSignal;
+}
+
+/**
+ * 길찾기를 치지 않고 잰 우회. 경로에서 x 떨어진 곳은 왕복 2x로 보고,
+ * 시간은 우회 평균 속도로 환산한다.
+ *
+ * 하한값 계산과 달리 시간을 0으로 두지 않는다. 하한은 "이보다 나쁠 수 없다"를
+ * 증명해야 하지만, 이쪽은 정밀 계산이 끝나기 전에 보여줄 어림값이라 실제에
+ * 가까운 편이 낫다.
+ */
+function estimatedDetour(proj: Projection): Detour {
+  const extraDistanceM = proj.offsetM * 2;
+  return {
+    extraDistanceM,
+    extraDurationS: (extraDistanceM / 1000 / DETOUR_SPEED_KMH) * 3600,
+    extraTollKrw: 0,
+    alongRouteM: proj.alongM,
+    offRouteM: proj.offsetM,
+    joinPoint: proj.point,
+    source: "geometric-estimate",
+  };
 }
 
 function passesHardFilters(
@@ -131,6 +168,7 @@ export async function buildRefuelPlan(
 ): Promise<RefuelPlan> {
   const maxExactCandidates =
     options.maxExactCandidates ?? MAX_EXACT_DETOUR_CANDIDATES;
+  const estimateOnly = options.detourMode === "estimate";
   const { route, vehicle, preferences, departAt, reports = [], nearby = false } =
     input;
   const cum = cumulativeDistances(route.polyline);
@@ -309,6 +347,23 @@ export async function buildRefuelPlan(
     }
   }
 
+  /*
+    사용자가 이미 고른 주유소는 무조건 맨 앞이다.
+
+    화면에서 한 곳을 누른 사람이 기다리는 것은 목록 전체의 순위가 아니라
+    "거기 들렀다 가면 실제로 얼마나 돌아가는가" 하나뿐이다. 상한에 걸려
+    잘리는 일이 없도록 첫 묶음에 넣는다.
+  */
+  if (options.priorityStationId) {
+    const index = bounded.findIndex(
+      (b) => b.station.id === options.priorityStationId,
+    );
+    if (index > 0) {
+      const [pulled] = bounded.splice(index, 1);
+      bounded.unshift(pulled);
+    }
+  }
+
   const evaluated: RefuelOption[] = [];
   let bestCostSoFar = Number.POSITIVE_INFINITY;
   let cursor = 0;
@@ -316,17 +371,25 @@ export async function buildRefuelPlan(
   let stoppedByQuota = false;
 
   while (cursor < bounded.length) {
-    if (exactlyEvaluated >= maxExactCandidates) {
-      stoppedByQuota = true;
-      break;
-    }
-    // 하한이 최적안 이상이면 이후 후보는 정렬상 모두 이길 수 없다.
-    // 다만 비교할 목록을 남기기 위해 최소 개수는 채운다.
+    if (options.signal?.aborted) throw abortError();
+
+    /*
+      하한이 최적안 이상이면 이후 후보는 정렬상 모두 이길 수 없다.
+      다만 비교할 목록을 남기기 위해 최소 개수는 채운다.
+
+      이 판정을 상한 검사보다 먼저 한다. 순서를 뒤집으면 "남은 후보가 이길 수
+      없음을 이미 증명했는데 마침 상한에도 닿은" 경우를 쿼터 때문에 멈춘 것으로
+      기록해, 최적임을 보장하지 못한다고 잘못 알린다.
+    */
     if (
       !options.disablePruning &&
       exactlyEvaluated >= MIN_EXACT_DETOUR_CANDIDATES &&
       bounded[cursor].lowerBoundKrw >= bestCostSoFar
     ) {
+      break;
+    }
+    if (exactlyEvaluated >= maxExactCandidates) {
+      stoppedByQuota = true;
       break;
     }
 
@@ -340,17 +403,21 @@ export async function buildRefuelPlan(
     cursor += batch.length;
     exactlyEvaluated += batch.length;
 
-    const detours = nearby
-      ? new Map<string, Detour>()
-      : await providers.routes.computeDetours(
-          route,
-          batch.map((b) => b.station),
-        );
+    const detours =
+      nearby || estimateOnly
+        ? new Map<string, Detour>()
+        : await providers.routes.computeDetours(
+            route,
+            batch.map((b) => b.station),
+            options.signal,
+          );
 
     for (const { station, proj } of batch) {
       const rawDetour = nearby
         ? nearbyGeometricDetour(route.origin, station, proj)
-        : detours.get(station.id);
+        : estimateOnly
+          ? estimatedDetour(proj)
+          : detours.get(station.id);
       if (!rawDetour) continue;
       const detour = rejectIllegalUturn(rawDetour, proj, station, route);
 
@@ -517,9 +584,10 @@ export async function buildRefuelPlan(
       stationProvider: providers.stations.label,
       routeProvider: providers.routes.label,
       detourSource:
-        nearby || !providers.routes.isLive
+        nearby || estimateOnly || !providers.routes.isLive
           ? "geometric-estimate"
           : "routing-api",
+      provisional: estimateOnly,
       computedAt: new Date().toISOString(),
       candidateCount: raw.length,
       exactlyEvaluated,

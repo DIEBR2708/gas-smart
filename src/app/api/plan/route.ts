@@ -23,6 +23,7 @@ import type {
   FuelKind,
   NamedPlace,
   Preferences,
+  RefuelPlan,
   Route,
   StationReport,
   Vehicle,
@@ -56,10 +57,13 @@ function planCacheKey(input: {
   reports: StationReport[];
   departAt: Date;
   nearby: boolean;
+  priorityStationId: string;
 }): string {
   return JSON.stringify({
     routeId: input.routeId ?? "",
     nearby: input.nearby,
+    // 우선 계산한 주유소는 정밀 계산 대상이 달라지므로 결과도 다르다.
+    prio: input.priorityStationId,
     o: input.origin && [input.origin.lat.toFixed(4), input.origin.lng.toFixed(4)],
     d:
       input.destination &&
@@ -80,6 +84,8 @@ interface PlanRequestBody {
   preferences?: Partial<Preferences>;
   departAt?: string;
   reports?: StationReport[];
+  /** 사용자가 이미 고른 주유소. 이 곳의 경유 경로부터 계산한다. */
+  priorityStationId?: string;
 }
 
 function clamp(value: number, min: number, max: number, fallback: number): number {
@@ -281,6 +287,7 @@ export async function POST(request: Request) {
   const origin = parsePlace(body.origin);
   const destination = parsePlace(body.destination);
   const nearby = body.searchMode === "nearby";
+  const priorityStationId = String(body.priorityStationId ?? "").slice(0, 80);
   const cacheKey = planCacheKey({
     routeId: body.routeId,
     origin,
@@ -290,6 +297,7 @@ export async function POST(request: Request) {
     reports,
     departAt,
     nearby,
+    priorityStationId,
   });
 
   let route = getSampleRoute(body.routeId ?? "") ?? SAMPLE_ROUTES[0];
@@ -376,14 +384,12 @@ export async function POST(request: Request) {
 
   routeReadyAt = Date.now();
 
-  try {
-    const plan = await buildRefuelPlan(
-      { route, vehicle, preferences, departAt, reports, nearby },
-      providers,
-    );
-    const planReadyAt = Date.now();
+  const planInput = { route, vehicle, preferences, departAt, reports, nearby };
+  const dataMode = stationsAreReal(providers) ? "live" : "sample";
 
-    const shapes = Object.fromEntries(
+  const toPayload = (plan: RefuelPlan) => ({
+    plan,
+    shapes: Object.fromEntries(
       plan.options.map((option) => [
         option.station.id,
         option.detour.viaPolyline && option.detour.viaPolyline.length > 1
@@ -394,35 +400,87 @@ export async function POST(request: Request) {
               option.detour.joinPoint,
             ),
       ]),
-    );
+    ),
+    dataMode,
+  });
 
-    const payload = {
-      plan,
-      shapes,
-      dataMode: stationsAreReal(providers) ? "live" : "sample",
-    };
-    if (plan.options.length > 0 && !isStraightFallbackRoute(plan.route)) {
-      if (planResponseCache.size > 80) {
-        const now = Date.now();
-        for (const [key, entry] of planResponseCache) {
-          if (now - entry.at >= PLAN_CACHE_TTL_MS) planResponseCache.delete(key);
+  /*
+    본선 경로 → 어림 순위 → 정밀 순위 순으로 흘려보낸다.
+
+    경유 길찾기는 후보 수만큼 카카오를 치기 때문에 4초 안팎이 걸린다. 그동안
+    화면을 비워 두는 대신, 길찾기를 한 건도 쓰지 않는 직선 왕복 어림값으로
+    순위를 먼저 띄우고 진짜 경로가 오는 대로 그 자리에서 갈아 끼운다.
+
+    근처 검색이나 샘플 경로는 애초에 어림값으로 계산하므로 두 번 돌릴 이유가 없다.
+  */
+  const needsRefinement = !nearby && providers.routes.isLive;
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const write = (message: unknown) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(message)}\n`));
+      };
+
+      write({ type: "route", route });
+
+      try {
+        if (needsRefinement) {
+          const draft = await buildRefuelPlan(planInput, providers, {
+            detourMode: "estimate",
+          });
+          write({ type: "plan", stage: "estimate", ...toPayload(draft) });
+        }
+
+        const plan = await buildRefuelPlan(planInput, providers, {
+          signal: request.signal,
+          priorityStationId: priorityStationId || undefined,
+        });
+        const payload = toPayload(plan);
+
+        if (plan.options.length > 0 && !isStraightFallbackRoute(plan.route)) {
+          if (planResponseCache.size > 80) {
+            const now = Date.now();
+            for (const [key, entry] of planResponseCache) {
+              if (now - entry.at >= PLAN_CACHE_TTL_MS) {
+                planResponseCache.delete(key);
+              }
+            }
+          }
+          planResponseCache.set(cacheKey, { at: Date.now(), payload });
+        }
+
+        write({
+          type: "plan",
+          stage: "exact",
+          ...payload,
+          timing: {
+            routeMs: routeReadyAt - startedAt,
+            planMs: Date.now() - routeReadyAt,
+          },
+        });
+      } catch (error) {
+        // 브라우저가 이미 떠난 계산은 알릴 상대가 없다.
+        if (!(error instanceof Error && error.name === "AbortError")) {
+          write({
+            type: "error",
+            error:
+              error instanceof Error
+                ? error.message
+                : "추천 계산에 실패했습니다.",
+          });
         }
       }
-      planResponseCache.set(cacheKey, { at: Date.now(), payload });
-    }
-    return NextResponse.json(payload, {
-      headers: {
-        // 어느 단계가 느린지 브라우저 네트워크 탭에서 바로 읽는다.
-        "Server-Timing": [
-          `route;dur=${routeReadyAt - startedAt}`,
-          `plan;dur=${planReadyAt - routeReadyAt}`,
-          `total;dur=${Date.now() - startedAt}`,
-        ].join(", "),
-      },
-    });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "추천 계산에 실패했습니다.";
-    return NextResponse.json({ error: message }, { status: 502 });
-  }
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+      // 어느 단계가 느린지 브라우저 네트워크 탭에서 바로 읽는다.
+      "Server-Timing": `route;dur=${routeReadyAt - startedAt}`,
+    },
+  });
 }

@@ -16,6 +16,16 @@ export interface PlanResponse {
   dataMode: "live" | "sample";
 }
 
+export interface PlanStreamHandlers {
+  /** 본선 경로가 나온 즉시 (아직 후보는 없다) */
+  onRoute?: (route: Route) => void;
+  /**
+   * 순위가 갱신될 때마다. 어림 계산 결과가 먼저 오고, 실제 경유 길찾기로
+   * 다시 계산한 결과가 뒤이어 같은 자리를 덮는다.
+   */
+  onPlan?: (response: PlanResponse) => void;
+}
+
 export interface PlanRequest {
   routeId?: string;
   searchMode?: "route" | "nearby";
@@ -25,12 +35,13 @@ export interface PlanRequest {
   preferences: Preferences;
   departAt: string;
   reports?: StationReport[];
+  priorityStationId?: string;
 }
 
 export async function fetchPlan(
   body: PlanRequest,
   signal?: AbortSignal,
-  onRoute?: (route: Route) => void,
+  handlers: PlanStreamHandlers = {},
 ): Promise<PlanResponse> {
   const res = await fetch("/api/plan", {
     method: "POST",
@@ -40,20 +51,20 @@ export async function fetchPlan(
   });
   const contentType = res.headers.get("content-type") ?? "";
   if (contentType.includes("ndjson") && res.body) {
-    return readPlanStream(res.body, onRoute);
+    return readPlanStream(res.body, handlers);
   }
   const json = await res.json();
   if (!res.ok) {
     throw new Error(json?.error ?? "추천 계산에 실패했습니다.");
   }
   const payload = json as PlanResponse;
-  if (payload.plan?.route) onRoute?.(payload.plan.route);
+  if (payload.plan?.route) handlers.onRoute?.(payload.plan.route);
   return payload;
 }
 
 async function readPlanStream(
   body: ReadableStream<Uint8Array>,
-  onRoute?: (route: Route) => void,
+  handlers: PlanStreamHandlers,
 ): Promise<PlanResponse> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -80,7 +91,7 @@ async function readPlanStream(
           throw new Error(message.error ?? "추천 계산에 실패했습니다.");
         }
         if (message.type === "route" && message.route) {
-          onRoute?.(message.route);
+          handlers.onRoute?.(message.route);
         }
         if (message.type === "plan" && message.plan) {
           plan = {
@@ -88,6 +99,7 @@ async function readPlanStream(
             shapes: message.shapes ?? {},
             dataMode: message.dataMode ?? "sample",
           };
+          handlers.onPlan?.(plan);
         }
       }
       newline = buffer.indexOf("\n");

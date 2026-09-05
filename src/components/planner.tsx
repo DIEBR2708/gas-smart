@@ -99,6 +99,16 @@ export function Planner({ routes }: Props) {
   const [mapPick, setMapPick] = useState<"origin" | "destination" | null>(null);
   const [userLocation, setUserLocation] = useState<LatLng | null>(null);
   const [previewRoute, setPreviewRoute] = useState<Route | null>(null);
+  /**
+   * 사용자가 고른 주유소를 정밀 계산 맨 앞으로 보내달라는 요청.
+   *
+   * `key`는 이 요청이 어느 출발·도착 조합에서 나왔는지다. 출발지나 도착지가
+   * 바뀌면 키가 어긋나 저절로 무효가 된다. 따로 지우는 코드를 두면 그 초기화가
+   * 또 한 번의 재조회를 부른다.
+   */
+  const [priority, setPriority] = useState<{ id: string; key: string } | null>(
+    null,
+  );
 
   const requestSeq = useRef(0);
 
@@ -137,6 +147,7 @@ export function Planner({ routes }: Props) {
   */
   const originKey = origin ? `${origin.lat},${origin.lng}` : "";
   const destinationKey = destination ? `${destination.lat},${destination.lng}` : "";
+  const corridorKey = `${searchMode}|${originKey}|${destinationKey}`;
   const originRef = useRef(origin);
   const destinationRef = useRef(destination);
   useEffect(() => {
@@ -176,6 +187,7 @@ export function Planner({ routes }: Props) {
 
       setLoading(true);
       setPreviewRoute(null);
+      let gotPartial = false;
       fetchPlan(
         {
           routeId,
@@ -185,11 +197,27 @@ export function Planner({ routes }: Props) {
           vehicle,
           preferences,
           departAt: departAt.toISOString(),
+          priorityStationId:
+            priority?.key === corridorKey ? priority.id : undefined,
         },
         controller.signal,
-        (route) => {
-          if (seq !== requestSeq.current) return;
-          setPreviewRoute(route);
+        {
+          onRoute: (route) => {
+            if (seq !== requestSeq.current) return;
+            setPreviewRoute(route);
+          },
+          /*
+            어림 순위가 먼저 온다. 정밀 계산을 기다리는 4초 동안 화면을
+            비워 두지 않으려는 것이므로, 도착하는 대로 바로 건다.
+          */
+          onPlan: (partial) => {
+            if (seq !== requestSeq.current) return;
+            gotPartial = true;
+            setData(partial);
+            setError(null);
+            setFromCache(false);
+            setCachedAt(null);
+          },
         },
       )
         .then((response) => {
@@ -198,7 +226,8 @@ export function Planner({ routes }: Props) {
           setError(null);
           setFromCache(false);
           setCachedAt(null);
-          cachePlan(response);
+          // 어림값은 저장하지 않는다. 다음에 켰을 때 그게 확정처럼 보인다.
+          if (!response.plan.meta.provisional) cachePlan(response);
           setSelectedId((current) => {
             const stillThere = response.plan.options.some(
               (o) => o.station.id === current,
@@ -217,6 +246,26 @@ export function Planner({ routes }: Props) {
             setCachedAt(null);
             setError(message);
             setSelectedId(null);
+            return;
+          }
+          /*
+            어림 순위는 이미 화면에 있다. 정밀 계산만 실패한 것이므로 지난번
+            저장본으로 되돌리면 오히려 오래된 값으로 후퇴한다. 사유만 알리고,
+            "곧 정확해진다"는 표시는 거둔다.
+          */
+          if (gotPartial) {
+            setError(message);
+            setData((current) =>
+              current?.plan.meta.provisional
+                ? {
+                    ...current,
+                    plan: {
+                      ...current.plan,
+                      meta: { ...current.plan.meta, provisional: false },
+                    },
+                  }
+                : current,
+            );
             return;
           }
           if (cached) {
@@ -242,6 +291,8 @@ export function Planner({ routes }: Props) {
     routeId,
     originKey,
     destinationKey,
+    corridorKey,
+    priority,
     vehicle,
     preferences,
     departAt,
@@ -265,11 +316,27 @@ export function Planner({ routes }: Props) {
           routes.find((r) => r.id === routeId) ??
           routes[0];
 
-  const handleSelect = useCallback((id: string) => {
-    if (mapPick) return;
-    setSelectedId((current) => (current === id ? null : id));
-    setTab("result");
-  }, [mapPick]);
+  /*
+    고른 곳의 실제 경유 경로를 먼저 가져온다.
+
+    아직 어림값만 있는 주유소를 눌렀다면, 그 한 곳을 정밀 계산 맨 앞으로
+    보내 다시 요청한다. 진행 중이던 요청은 취소되지만 이미 나간 길찾기
+    결과는 서버 캐시에 남으므로 버려지는 것은 대기 시간뿐이다.
+  */
+  const handleSelect = useCallback(
+    (id: string) => {
+      if (mapPick) return;
+      const next = selectedId === id ? null : id;
+      setSelectedId(next);
+      setTab("result");
+      if (!next || fromCache || searchMode === "nearby") return;
+      const option = data?.plan.options.find((o) => o.station.id === next);
+      if (option && option.detour.source === "geometric-estimate") {
+        setPriority({ id: next, key: corridorKey });
+      }
+    },
+    [mapPick, selectedId, fromCache, searchMode, data, corridorKey],
+  );
 
   /**
    * 찍은 좌표를 먼저 넣고, 주소는 나중에 채운다.

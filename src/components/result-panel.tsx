@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleSlash, Info, TriangleAlert } from "lucide-react";
+import { CircleSlash, Info, Loader2, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -123,6 +123,22 @@ export function ResultPanel({
             오피넷 인증키가 없어 주유소를 지어냈습니다. 지도 위 위치와 이름,
             가격 모두 실제가 아닙니다. <code>.env.local</code>에{" "}
             <code>OPINET_CERT_KEY</code>를 넣으면 실제 주유소로 바뀝니다.
+          </span>
+        </div>
+      )}
+      {error && !fromCache && (
+        <div className="flex gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-red-200">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+      {plan.meta.provisional && (
+        <div className="flex gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+          <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin" />
+          <span>
+            우회를 직선 왕복으로 어림잡은 잠정 순위입니다. 실제 경유 길찾기가
+            도착하는 대로 거리·시간·금액이 그 자리에서 바뀝니다. 먼저 보고 싶은
+            주유소를 누르면 그곳부터 계산합니다.
           </span>
         </div>
       )}

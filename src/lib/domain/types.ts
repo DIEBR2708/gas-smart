@@ -416,4 +416,12 @@ export interface PlanMeta {
    * 나은 것이 있을 수 있다. 이 경우 화면에 반드시 알려야 한다.
    */
   optimalityGuaranteed: boolean;
+
+  /**
+   * 우회를 길찾기 없이 직선 왕복으로만 잰 잠정 결과인가.
+   *
+   * 본선 경로만 나온 시점에 순위를 먼저 보여주기 위한 1차 계산이다. 뒤이어
+   * 실제 경유 길찾기로 다시 계산한 결과가 이 값을 false로 덮는다.
+   */
+  provisional: boolean;
 }

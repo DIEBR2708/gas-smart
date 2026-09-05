@@ -30,7 +30,11 @@ export interface RouteProvider {
    * 각 주유소를 경유지로 넣었을 때의 우회 증분을 계산한다.
    * 호출 비용이 큰 연산이므로(경유지 길찾기 1건 = 쿼터 1건) 후보를 미리 줄여서 넘긴다.
    */
-  computeDetours(route: Route, stations: Station[]): Promise<Map<string, Detour>>;
+  computeDetours(
+    route: Route,
+    stations: Station[],
+    signal?: AbortSignal,
+  ): Promise<Map<string, Detour>>;
   /** 지도에 그릴 우회 구간 형상 */
   detourShape(route: Route, station: Station, joinPoint: LatLng): LatLng[];
 }

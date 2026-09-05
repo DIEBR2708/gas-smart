@@ -11,7 +11,7 @@ import type {
   Route,
   Station,
 } from "@/lib/domain/types";
-import { fetchOutbound, mapPool } from "@/lib/http";
+import { fetchOutbound, mapPool, raceAbort } from "@/lib/http";
 import type { RouteProvider } from "../types";
 
 /**
@@ -324,6 +324,7 @@ export class KakaoRouteProvider implements RouteProvider {
   async computeDetours(
     route: Route,
     stations: Station[],
+    signal?: AbortSignal,
   ): Promise<Map<string, Detour>> {
     const cum = cumulativeDistances(route.polyline);
     const out = new Map<string, Detour>();
@@ -348,42 +349,51 @@ export class KakaoRouteProvider implements RouteProvider {
       }
     }
 
-    const results = await mapPool(pending, 12, async (station) => {
-      const key = `${routeKey}|${station.id}`;
-      const running = detourInflight.get(key);
-      if (running) return { station, detour: await running };
+    const results = await raceAbort(
+      mapPool(pending, 12, async (station) => {
+        const key = `${routeKey}|${station.id}`;
+        const running = detourInflight.get(key);
+        if (running) return { station, detour: await running };
 
-      const promise = this.request(route.origin, route.destination, station)
-        .then((viaStation) => {
-          if (!viaStation) return null;
-          const proj = projectOntoPolyline(station, route.polyline, cum);
-          const detour: Detour = {
-            extraDistanceM: Math.max(0, viaStation.distanceM - route.distanceM),
-            extraDurationS: Math.max(0, viaStation.durationS - route.durationS),
-            extraTollKrw: viaStation.tollKrw - route.tollKrw,
-            alongRouteM: proj.alongM,
-            offRouteM: proj.offsetM,
-            joinPoint: proj.point,
-            source: "routing-api",
-            viaPolyline:
-              viaStation.polyline.length > 1
-                ? viaStation.polyline
-                : viaRoutePolyline(
-                    route.polyline,
-                    station,
-                    proj.point,
-                    proj.alongM,
-                  ),
-          };
-          detourCache.set(key, { at: Date.now(), detour });
-          return detour;
-        })
-        .finally(() => {
-          detourInflight.delete(key);
-        });
-      detourInflight.set(key, promise);
-      return { station, detour: await promise };
-    });
+        const promise = this.request(route.origin, route.destination, station)
+          .then((viaStation) => {
+            if (!viaStation) return null;
+            const proj = projectOntoPolyline(station, route.polyline, cum);
+            const detour: Detour = {
+              extraDistanceM: Math.max(
+                0,
+                viaStation.distanceM - route.distanceM,
+              ),
+              extraDurationS: Math.max(
+                0,
+                viaStation.durationS - route.durationS,
+              ),
+              extraTollKrw: viaStation.tollKrw - route.tollKrw,
+              alongRouteM: proj.alongM,
+              offRouteM: proj.offsetM,
+              joinPoint: proj.point,
+              source: "routing-api",
+              viaPolyline:
+                viaStation.polyline.length > 1
+                  ? viaStation.polyline
+                  : viaRoutePolyline(
+                      route.polyline,
+                      station,
+                      proj.point,
+                      proj.alongM,
+                    ),
+            };
+            detourCache.set(key, { at: Date.now(), detour });
+            return detour;
+          })
+          .finally(() => {
+            detourInflight.delete(key);
+          });
+        detourInflight.set(key, promise);
+        return { station, detour: await promise };
+      }),
+      signal,
+    );
 
     for (const { station, detour } of results) {
       if (detour) out.set(station.id, detour);
