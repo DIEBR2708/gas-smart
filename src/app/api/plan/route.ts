@@ -23,10 +23,16 @@ import type {
   FuelKind,
   NamedPlace,
   Preferences,
+  Route,
   StationReport,
   Vehicle,
 } from "@/lib/domain/types";
-import { resolveProviders, stationsAreReal } from "@/lib/providers";
+import {
+  resolveProviders,
+  stationsAreReal,
+  type ProviderSet,
+} from "@/lib/providers";
+import { snapToRoadKakao } from "@/lib/providers/kakao/local";
 
 /**
  * 추천 계산은 서버에서 한다.
@@ -186,6 +192,75 @@ function parseReports(input: unknown): StationReport[] {
   });
 }
 
+/**
+ * 옮긴 거리가 이보다 짧으면 원래 좌표도 이미 도로 옆이었다는 뜻이다.
+ * 도심에서 편의점 하나 거리만큼 밀어놓고 "옮겼습니다"라고 말할 필요는 없다.
+ */
+const SNAP_MIN_MOVE_M = 250;
+
+function kakaoFailureCode(error: unknown): string {
+  return error instanceof Error && error.message.startsWith("KAKAO:")
+    ? error.message.slice("KAKAO:".length)
+    : "";
+}
+
+async function snapEndpointToRoad(
+  place: NamedPlace,
+  label: string,
+  key: string,
+): Promise<{ place: NamedPlace; note: string } | null> {
+  const snap = await snapToRoadKakao(key, place.lat, place.lng);
+  if (!snap || snap.distanceM < SNAP_MIN_MOVE_M) return null;
+  const away =
+    snap.distanceM >= 1000
+      ? `${(snap.distanceM / 1000).toFixed(1)}km`
+      : `${Math.round(snap.distanceM / 10) * 10}m`;
+  return {
+    place: {
+      name: place.name,
+      lat: snap.place.lat,
+      lng: snap.place.lng,
+      address: snap.place.address ?? snap.place.name,
+    },
+    note: `${label} '${place.name}' 자리는 도로와 이어지지 않아, ${away} 떨어진 '${snap.place.name}' 기준으로 길을 잡았습니다.`,
+  };
+}
+
+/**
+ * 산 정상처럼 도로가 없는 좌표를 그대로 넘기면 카카오는 경로를 아예 만들지 않는다.
+ * 길찾기가 결과 코드로 거절했을 때만, 양 끝을 가장 가까운 차량 진입 지점으로 옮겨
+ * 한 번 더 물어본다. 통신 실패는 좌표 문제가 아니므로 재시도하지 않는다.
+ */
+async function findRouteSnappingToRoad(
+  providers: ProviderSet,
+  origin: NamedPlace,
+  destination: NamedPlace,
+): Promise<Route> {
+  try {
+    return await providers.routes.findRoute(origin, destination);
+  } catch (error) {
+    const key = process.env.KAKAO_REST_API_KEY?.trim();
+    if (!key || !kakaoFailureCode(error).startsWith("code-")) throw error;
+
+    const [snappedOrigin, snappedDestination] = await Promise.all([
+      snapEndpointToRoad(origin, "출발지", key),
+      snapEndpointToRoad(destination, "도착지", key),
+    ]);
+    if (!snappedOrigin && !snappedDestination) throw error;
+
+    const route = await providers.routes.findRoute(
+      snappedOrigin?.place ?? origin,
+      snappedDestination?.place ?? destination,
+    );
+    return {
+      ...route,
+      adjustedNote: [snappedOrigin?.note, snappedDestination?.note]
+        .filter(Boolean)
+        .join(" "),
+    };
+  }
+}
+
 export async function POST(request: Request) {
   let body: PlanRequestBody;
   try {
@@ -262,7 +337,7 @@ export async function POST(request: Request) {
     route = nearbySearchRoute(origin);
   } else if (origin && destination) {
     try {
-      route = await providers.routes.findRoute(origin, destination);
+      route = await findRouteSnappingToRoad(providers, origin, destination);
     } catch (error) {
       const corridor = knownCorridorRoute(origin, destination);
       if (corridor) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleSlash, TriangleAlert } from "lucide-react";
+import { CircleSlash, Info, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -124,6 +124,12 @@ export function ResultPanel({
             가격 모두 실제가 아닙니다. <code>.env.local</code>에{" "}
             <code>OPINET_CERT_KEY</code>를 넣으면 실제 주유소로 바뀝니다.
           </span>
+        </div>
+      )}
+      {plan.route.adjustedNote && (
+        <div className="flex gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+          <Info className="mt-0.5 size-3.5 shrink-0" />
+          <span>{plan.route.adjustedNote}</span>
         </div>
       )}
       {isStraightFallbackRoute(plan.route) && (

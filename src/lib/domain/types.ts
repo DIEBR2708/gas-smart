@@ -203,6 +203,11 @@ export interface Route {
    * false면 출발·도착 표시만 하고 선을 잇지 않는다.
    */
   driveable?: boolean;
+  /**
+   * 사용자가 고른 지점을 그대로 쓰지 못해 옮겼을 때의 설명.
+   * 산 정상처럼 도로와 이어지지 않은 좌표는 가장 가까운 차량 진입 지점으로 옮긴다.
+   */
+  adjustedNote?: string;
 }
 
 export type DetourSource = "routing-api" | "geometric-estimate";
