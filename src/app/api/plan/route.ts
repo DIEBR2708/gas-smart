@@ -333,6 +333,9 @@ export async function POST(request: Request) {
     return NextResponse.json(cached.payload);
   }
 
+  const startedAt = Date.now();
+  let routeReadyAt = startedAt;
+
   if (nearby && origin) {
     route = nearbySearchRoute(origin);
   } else if (origin && destination) {
@@ -371,11 +374,14 @@ export async function POST(request: Request) {
     }
   }
 
+  routeReadyAt = Date.now();
+
   try {
     const plan = await buildRefuelPlan(
       { route, vehicle, preferences, departAt, reports, nearby },
       providers,
     );
+    const planReadyAt = Date.now();
 
     const shapes = Object.fromEntries(
       plan.options.map((option) => [
@@ -404,7 +410,16 @@ export async function POST(request: Request) {
       }
       planResponseCache.set(cacheKey, { at: Date.now(), payload });
     }
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, {
+      headers: {
+        // 어느 단계가 느린지 브라우저 네트워크 탭에서 바로 읽는다.
+        "Server-Timing": [
+          `route;dur=${routeReadyAt - startedAt}`,
+          `plan;dur=${planReadyAt - routeReadyAt}`,
+          `total;dur=${Date.now() - startedAt}`,
+        ].join(", "),
+      },
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "추천 계산에 실패했습니다.";

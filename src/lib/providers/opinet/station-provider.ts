@@ -20,6 +20,12 @@ import type { StationProvider, StationQuery } from "../types";
 
 const BASE_URL = "https://www.opinet.co.kr/api";
 
+/**
+ * 회랑 조회가 빈손일 때 유종 가격을 채워 볼 주유소 수.
+ * 이 폴백은 주유소 한 곳당 상세조회 한 번이라 넉넉히 잡으면 그대로 지연이 된다.
+ */
+const HYDRATE_LIMIT = 12;
+
 interface DetailRow {
   UNI_ID: string;
   SELF_YN?: string;
@@ -56,13 +62,16 @@ export class OpinetStationProvider implements StationProvider {
 
     const asOf = startOfKstDay();
     let stations = catalog.stationsNear(points, radiusM, query.fuelKind, asOf);
+
+    /*
+      비었다고 회랑 전체를 다시 치지 않는다.
+      실패한 칸은 받은 것으로 치지 않으므로 다음 검색에서 어차피 다시 간다.
+      여기서 전 구간을 되풀이하면 이미 느린 요청의 시간과 호출이 두 배가 된다.
+      대신 이미 알고 있는 주유소에서 유종 가격만 채워 본다.
+    */
     if (stations.length === 0 && points.length > 0) {
-      await queue.refetchMany(points, query.fuelKind);
-      stations = catalog.stationsNear(points, radiusM, query.fuelKind, asOf);
-    }
-    if (stations.length === 0 && points.length > 0) {
-      const nearby = catalog.nearestAlong(points, radiusM, asOf, 40);
-      stations = await this.hydrateFuel(nearby, query.fuelKind);
+      const known = catalog.nearestAlong(points, radiusM, asOf, HYDRATE_LIMIT);
+      stations = await this.hydrateFuel(known, query.fuelKind);
       for (const station of stations) {
         const price = station.prices[query.fuelKind];
         if (price !== undefined) catalog.setFuelPrice(station.id, query.fuelKind, price);

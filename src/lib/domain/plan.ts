@@ -57,6 +57,19 @@ const DETOUR_BATCH_SIZE = 12;
 /** 회랑 반폭의 하한 (m). 우회 허용치가 아주 작아도 이 정도는 본다. */
 const MIN_CORRIDOR_HALF_WIDTH_M = 1200;
 
+/**
+ * 회랑 반폭의 상한 (m).
+ *
+ * 필요한 샘플 간격은 sqrt(r^2 - w^2)라 반폭이 반경(5km)에 가까워질수록
+ * 0으로 무너진다. 반폭 4km면 한 경로에 조회가 30회를 넘고 4.5km면 60회다.
+ *
+ * 그렇게까지 넓힐 값어치가 없다. 중심선에서 2.5km면 왕복 5km 우회이고,
+ * 연료·시간을 합쳐 2천원 넘게 든다. 40L를 넣어 그걸 뒤집으려면 리터당
+ * 60원 넘게 싸야 한다. 그보다 먼 주유소는 다른 검색에서 이미 받아 둔
+ * 목록에 있으면 그대로 후보로 올라간다.
+ */
+const MAX_CORRIDOR_HALF_WIDTH_M = 2500;
+
 /** 우회 주행 평균 속도 가정 (km/h). 손익분기 설명에 쓰인다. */
 const DETOUR_SPEED_KMH = 28;
 
@@ -133,11 +146,14 @@ export async function buildRefuelPlan(
         STATION_SEARCH_MAX_RADIUS_M * 0.9,
         Math.max(MIN_CORRIDOR_HALF_WIDTH_M, preferences.maxDetourKm * 1000),
       )
-    : Math.max(
-        MIN_CORRIDOR_HALF_WIDTH_M,
-        (preferences.maxDetourKm * 1000) / 2,
-      );
-  const corridor = planCorridorSearch(route.polyline, requestedHalfWidthM);
+    : Math.max(MIN_CORRIDOR_HALF_WIDTH_M, (preferences.maxDetourKm * 1000) / 2);
+  // 실제로 조회할 폭은 상한을 건다. 요청 폭은 그대로 두고 잘렸다고 알린다.
+  const searchHalfWidthM = nearby
+    ? requestedHalfWidthM
+    : Math.min(MAX_CORRIDOR_HALF_WIDTH_M, requestedHalfWidthM);
+  const corridor = planCorridorSearch(route.polyline, searchHalfWidthM);
+  const corridorTruncated =
+    corridor.truncated || searchHalfWidthM < requestedHalfWidthM;
 
   const raw = await providers.stations.findAlongRoute(route, {
     fuelKind: vehicle.fuelKind,
@@ -509,7 +525,7 @@ export async function buildRefuelPlan(
       exactlyEvaluated,
       corridorHalfWidthM: corridor.coveredHalfWidthM,
       requestedHalfWidthM,
-      corridorTruncated: corridor.truncated,
+      corridorTruncated,
       searchRadiusM: corridor.searchRadiusM,
       searchCallCount: corridor.callCount,
       optimalityGuaranteed: !stoppedByQuota,

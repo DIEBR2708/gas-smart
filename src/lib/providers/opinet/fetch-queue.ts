@@ -82,14 +82,6 @@ export class PriceFetchQueue {
     await Promise.all(centers.map((c) => this.ensure(c, fuelKind, priority)));
   }
 
-  /** 이미 받은 칸도 다시 친다. 경로에 주유소가 하나도 없을 때 쓴다. */
-  async refetchMany(centers: LatLng[], fuelKind: FuelKind): Promise<void> {
-    for (const center of centers) {
-      this.catalog.forgetCell(cellId(center, fuelKind));
-    }
-    await this.ensureMany(centers, fuelKind, "user");
-  }
-
   private promote(key: string): void {
     const index = this.background.findIndex((job) => job.key === key);
     if (index < 0) return;
