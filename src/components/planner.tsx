@@ -131,12 +131,27 @@ export function Planner({ routes }: Props) {
     saveDiscountRules(preferences.discountRules);
   }, [vehicle, preferences, routeId, origin, destination, departAt, searchMode]);
 
+  /*
+    계획을 다시 부르는 기준은 좌표다. 지도를 찍은 뒤 주소가 늦게 도착해 이름만
+    바뀌는 경우까지 재조회하면, 같은 자리를 두 번 계산하며 화면이 다시 비워진다.
+  */
+  const originKey = origin ? `${origin.lat},${origin.lng}` : "";
+  const destinationKey = destination ? `${destination.lat},${destination.lng}` : "";
+  const originRef = useRef(origin);
+  const destinationRef = useRef(destination);
+  useEffect(() => {
+    originRef.current = origin;
+    destinationRef.current = destination;
+  }, [origin, destination]);
+
   useEffect(() => {
     const controller = new AbortController();
     const seq = ++requestSeq.current;
 
     const timer = setTimeout(() => {
-      if (searchMode === "nearby" && !origin) {
+      const from = originRef.current;
+      const to = destinationRef.current;
+      if (searchMode === "nearby" && !from) {
         setData(null);
         setError("이 자리에서 찾으려면 위치를 지정해 주세요.");
         setFromCache(false);
@@ -146,8 +161,8 @@ export function Planner({ routes }: Props) {
         return;
       }
       const blocked =
-        searchMode === "route" && origin && destination
-          ? carUnreachableReason(origin, destination)
+        searchMode === "route" && from && to
+          ? carUnreachableReason(from, to)
           : null;
       if (blocked) {
         setData(null);
@@ -165,9 +180,8 @@ export function Planner({ routes }: Props) {
         {
           routeId,
           searchMode,
-          origin: origin ?? undefined,
-          destination:
-            searchMode === "nearby" ? undefined : destination ?? undefined,
+          origin: from ?? undefined,
+          destination: searchMode === "nearby" ? undefined : to ?? undefined,
           vehicle,
           preferences,
           departAt: departAt.toISOString(),
@@ -224,7 +238,15 @@ export function Planner({ routes }: Props) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [routeId, origin, destination, vehicle, preferences, departAt, searchMode]);
+  }, [
+    routeId,
+    originKey,
+    destinationKey,
+    vehicle,
+    preferences,
+    departAt,
+    searchMode,
+  ]);
 
   const unreachable =
     Boolean(error && isUnreachableByCarMessage(error)) &&
@@ -249,26 +271,62 @@ export function Planner({ routes }: Props) {
     setTab("result");
   }, [mapPick]);
 
+  /**
+   * 찍은 좌표를 먼저 넣고, 주소는 나중에 채운다.
+   * 역지오코딩을 기다렸다가 넣으면 지도를 눌러도 몇 초 동안 아무 일도
+   * 일어나지 않는 것처럼 보인다. 경로 계산에 필요한 것은 좌표뿐이다.
+   */
   const applyPickedPoint = useCallback(
-    async (lat: number, lng: number) => {
+    (lat: number, lng: number) => {
       const target = mapPick;
       if (!target) return;
-      let place: NamedPlace = { name: "지도에서 지정", lat, lng };
-      try {
-        place = (await reverseGeocodePlace(lat, lng)) ?? place;
-      } catch {
-        /* 좌표만으로도 경로를 계산할 수 있다 */
-      }
-      if (target === "origin") setOrigin(place);
-      else setDestination(place);
+      const picked: NamedPlace = { name: "지도에서 지정", lat, lng };
+      if (target === "origin") setOrigin(picked);
+      else setDestination(picked);
       setMapPick(null);
       setError(null);
+
+      void (async () => {
+        let named: NamedPlace | null = null;
+        try {
+          named = await reverseGeocodePlace(lat, lng);
+        } catch {
+          /* 좌표만으로도 경로를 계산할 수 있다 */
+        }
+        if (!named) return;
+        // 이름만 바꾼다. 좌표를 역지오코딩 결과로 덮으면 사용자가 찍은
+        // 자리에서 수십 m 밀려난다.
+        const labelled: NamedPlace = { ...named, lat, lng };
+        const stillPicked = (current: NamedPlace | null) =>
+          current !== null && current.lat === lat && current.lng === lng;
+        if (target === "origin") {
+          setOrigin((current) => (stillPicked(current) ? labelled : current));
+        } else {
+          setDestination((current) =>
+            stillPicked(current) ? labelled : current,
+          );
+        }
+      })();
     },
     [mapPick],
   );
 
   const plan = data?.plan ?? null;
   const isSample = data?.dataMode !== "live";
+
+  /*
+    캐시에서 바로 돌아오는 조회까지 화면을 덮으면 깜빡임만 남는다.
+    사람이 "느리다"고 느끼기 시작하는 지점에서만 가린다.
+  */
+  const [veiled, setVeiled] = useState(false);
+  useEffect(() => {
+    if (!loading) {
+      setVeiled(false);
+      return;
+    }
+    const timer = setTimeout(() => setVeiled(true), 220);
+    return () => clearTimeout(timer);
+  }, [loading]);
 
   return (
     <div className="flex h-dvh min-h-0 flex-col overflow-hidden">
@@ -320,7 +378,20 @@ export function Planner({ routes }: Props) {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+        {/* 검색창과 범례(z-500)는 덮지 않는다. 가리는 동안에도 목적지는 바꿀 수 있어야 한다. */}
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-0 z-[400] flex items-start justify-center bg-slate-950/45 pt-24 backdrop-blur-[1px] transition-opacity duration-200 lg:items-center lg:pt-0",
+            veiled ? "opacity-100" : "opacity-0",
+          )}
+          aria-hidden={!veiled}
+        >
+          <div className="flex items-center gap-2 rounded-full border border-border bg-background/95 px-4 py-2 text-sm font-medium shadow-lg">
+            <Loader2 className="size-4 animate-spin text-primary" />
+            {searchMode === "nearby" ? "주변 주유소 찾는 중" : "경로 로드중"}
+          </div>
+        </div>
         <div className="relative h-[42dvh] min-h-[220px] shrink-0 lg:h-auto lg:min-h-0 lg:flex-1">
           <RouteMap
             route={displayRoute}
