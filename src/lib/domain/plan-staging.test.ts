@@ -21,6 +21,7 @@ class RecordingRouteProvider implements RouteProvider {
 
   findRoute = this.inner.findRoute.bind(this.inner);
   detourShape = this.inner.detourShape.bind(this.inner);
+  computeLegs = this.inner.computeLegs.bind(this.inner);
 
   async computeDetours(
     r: Route,

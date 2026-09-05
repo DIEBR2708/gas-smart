@@ -12,7 +12,7 @@ import {
 import { rejectIllegalUturn, withAccessHint } from "./access";
 import { STATION_SEARCH_MAX_RADIUS_M, planCorridorSearch } from "./corridor";
 import { estimateDetour } from "./detour-estimate";
-import { nearbyGeometricDetour } from "./nearby";
+import { nearbyDetourLowerBound, nearbyGeometricDetour } from "./nearby";
 import {
   cumulativeDistances,
   projectOntoPolyline,
@@ -224,7 +224,14 @@ export async function buildRefuelPlan(
       });
       continue;
     }
-    const hinted = withAccessHint(station, proj, route);
+    /*
+      주변 검색에는 본선이 없으므로 접근 힌트를 붙이지 않는다.
+
+      "반대편 차선"이나 "고속도로 진출"은 지나가는 길이 있어야 성립하는
+      말이다. 길이 없는데도 힌트를 매기면 원점에서 몇백 미터 떨어진 주유소가
+      전부 반대편으로 표시된다.
+    */
+    const hinted = nearby ? station : withAccessHint(station, proj, route);
     if (
       preferences.avoidHighwayExit &&
       hinted.accessHint?.requiresHighwayExit
@@ -286,7 +293,7 @@ export async function buildRefuelPlan(
   const bounded = surviving
     .map((s) => {
       const minimalDetour: Detour = nearby
-        ? nearbyGeometricDetour(route.origin, s.station, s.proj)
+        ? nearbyDetourLowerBound(route.origin, s.station, s.proj)
         : {
             extraDistanceM: s.proj.offsetM * 2,
             extraDurationS: 0,
@@ -349,6 +356,8 @@ export async function buildRefuelPlan(
   let cursor = 0;
   let exactlyEvaluated = 0;
   let stoppedByQuota = false;
+  /** 실도로를 못 받아 직선 어림값으로 메운 후보가 하나라도 있는지 */
+  let usedEstimatedDetour = false;
 
   while (cursor < bounded.length) {
     if (options.signal?.aborted) throw abortError();
@@ -383,23 +392,46 @@ export async function buildRefuelPlan(
     cursor += batch.length;
     exactlyEvaluated += batch.length;
 
-    const detours =
-      nearby || estimateOnly
-        ? new Map<string, Detour>()
+    /*
+      주변 검색에는 뺄 본선이 없으므로 경유 우회 대신 편도 경로를 묻는다.
+
+      직선 거리에 도시부 계수를 곱한 어림값은 순위를 대충 맞추는 데는 쓸 수
+      있어도, 지도에는 건물을 관통하는 직선으로 그려진다. 어림 단계에서는
+      그대로 두고, 정밀 단계에서 실도로로 갈아 끼운다.
+    */
+    const detours = estimateOnly
+      ? new Map<string, Detour>()
+      : nearby
+        ? await providers.routes.computeLegs(
+            route.origin,
+            batch.map((b) => b.station),
+            options.signal,
+          )
         : await providers.routes.computeDetours(
             route,
             batch.map((b) => b.station),
             options.signal,
           );
 
+    /** 실도로 편도가 안 왔으면 직선 어림값으로 메운다. 목록에서 빼지는 않는다. */
+    const nearbyDetourFor = (station: Station, proj: Projection): Detour => {
+      const leg = detours.get(station.id);
+      if (leg) return leg;
+      usedEstimatedDetour = true;
+      return nearbyGeometricDetour(route.origin, station, proj);
+    };
+
     for (const { station, proj } of batch) {
       const rawDetour = nearby
-        ? nearbyGeometricDetour(route.origin, station, proj)
+        ? nearbyDetourFor(station, proj)
         : estimateOnly
           ? estimateDetour(route, station, proj)
           : detours.get(station.id);
       if (!rawDetour) continue;
-      const detour = rejectIllegalUturn(rawDetour, proj, station, route);
+      // 본선이 없으면 유턴을 대신할 나들목 왕복도 없다.
+      const detour = nearby
+        ? rawDetour
+        : rejectIllegalUturn(rawDetour, proj, station, route);
 
       /*
         우회 허용치는 실제로 잰 우회에만 적용한다.
@@ -574,7 +606,7 @@ export async function buildRefuelPlan(
       stationProvider: providers.stations.label,
       routeProvider: providers.routes.label,
       detourSource:
-        nearby || estimateOnly || !providers.routes.isLive
+        estimateOnly || usedEstimatedDetour || !providers.routes.isLive
           ? "geometric-estimate"
           : "routing-api",
       provisional: estimateOnly,

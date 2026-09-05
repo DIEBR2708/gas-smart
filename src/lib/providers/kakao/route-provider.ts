@@ -1,5 +1,6 @@
 import {
   cumulativeDistances,
+  haversineM,
   projectOntoPolyline,
   viaRoutePolyline,
 } from "@/lib/domain/geo";
@@ -382,6 +383,72 @@ export class KakaoRouteProvider implements RouteProvider {
                       proj.point,
                       proj.alongM,
                     ),
+            };
+            detourCache.set(key, { at: Date.now(), detour });
+            return detour;
+          })
+          .finally(() => {
+            detourInflight.delete(key);
+          });
+        detourInflight.set(key, promise);
+        return { station, detour: await promise };
+      }),
+      signal,
+    );
+
+    for (const { station, detour } of results) {
+      if (detour) out.set(station.id, detour);
+    }
+    pruneTimedCache(detourCache, ROUTE_CACHE_TTL_MS, 400);
+    return out;
+  }
+
+  /**
+   * 이 자리에서 주유소까지 가는 편도 경로를 후보마다 한 건씩 구한다.
+   *
+   * 경유 우회와 달리 뺄 본선이 없다. 왕복으로 물으면 거리가 두 배로 잡히고,
+   * 지도에도 갔다 돌아오는 선이 그려진다. 주유 후에는 그 자리에서 다시
+   * 출발하므로 편도가 맞다.
+   */
+  async computeLegs(
+    origin: NamedPlace,
+    stations: Station[],
+    signal?: AbortSignal,
+  ): Promise<Map<string, Detour>> {
+    const originKey = `leg|${origin.lat.toFixed(4)},${origin.lng.toFixed(4)}`;
+    const out = new Map<string, Detour>();
+    const pending: Station[] = [];
+
+    for (const station of stations) {
+      const cached = detourCache.get(`${originKey}|${station.id}`);
+      if (cached && Date.now() - cached.at < ROUTE_CACHE_TTL_MS) {
+        out.set(station.id, cached.detour);
+      } else {
+        pending.push(station);
+      }
+    }
+
+    const results = await raceAbort(
+      mapPool(pending, 12, async (station) => {
+        const key = `${originKey}|${station.id}`;
+        const running = detourInflight.get(key);
+        if (running) return { station, detour: await running };
+
+        const promise = this.request(origin, station)
+          .then((leg) => {
+            if (!leg) return null;
+            const detour: Detour = {
+              extraDistanceM: leg.distanceM,
+              extraDurationS: leg.durationS,
+              extraTollKrw: leg.tollKrw,
+              alongRouteM: 0,
+              offRouteM: haversineM(origin, station),
+              joinPoint: origin,
+              source: "routing-api",
+              viaPolyline:
+                leg.polyline.length > 1
+                  ? leg.polyline
+                  : [origin, { lat: station.lat, lng: station.lng }],
             };
             detourCache.set(key, { at: Date.now(), detour });
             return detour;

@@ -35,6 +35,18 @@ export interface RouteProvider {
     stations: Station[],
     signal?: AbortSignal,
   ): Promise<Map<string, Detour>>;
+  /**
+   * 목적지 없이 이 자리에서 각 주유소까지 가는 편도 실도로 경로.
+   *
+   * 주변 검색에는 본선이 없으므로 "경유했을 때의 증분"을 물을 대상이 없다.
+   * 대신 가는 길 자체가 비용이고 지도에 그릴 형상이다. 실도로를 모르는
+   * 프로바이더는 빈 Map을 돌려주고, 부르는 쪽이 직선 어림값으로 메운다.
+   */
+  computeLegs(
+    origin: NamedPlace,
+    stations: Station[],
+    signal?: AbortSignal,
+  ): Promise<Map<string, Detour>>;
   /** 지도에 그릴 우회 구간 형상 */
   detourShape(route: Route, station: Station, joinPoint: LatLng): LatLng[];
 }

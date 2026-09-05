@@ -432,9 +432,12 @@ export async function preparePlan(
     화면을 비워 두는 대신, 길찾기를 한 건도 쓰지 않는 직선 왕복 어림값으로
     순위를 먼저 띄우고 진짜 경로가 오는 대로 그 자리에서 갈아 끼운다.
 
-    근처 검색이나 샘플 경로는 애초에 어림값으로 계산하므로 두 번 돌릴 이유가 없다.
+    근처 검색도 마찬가지다. 목적지가 없을 뿐 주유소까지 가는 길은 실도로로
+    묻기 때문에, 직선 어림 순위를 먼저 띄우고 실제 경로로 갈아 끼운다.
+
+    샘플 경로는 애초에 어림값으로 계산하므로 두 번 돌릴 이유가 없다.
   */
-  const needsRefinement = !nearby && providers.routes.isLive;
+  const needsRefinement = providers.routes.isLive;
 
   const settledRoute = route;
   return {

@@ -60,6 +60,14 @@ export class MockRouteProvider implements RouteProvider {
     return out;
   }
 
+  /**
+   * 샘플 모드에는 도로망이 없다. 빈 Map을 주면 부르는 쪽이 직선 어림값으로
+   * 메우므로, 여기서 그럴듯한 곡선을 지어내지 않는다.
+   */
+  async computeLegs(): Promise<Map<string, Detour>> {
+    return new Map();
+  }
+
   detourShape(route: Route, station: Station, joinPoint: LatLng): LatLng[] {
     const cum = cumulativeDistances(route.polyline);
     const proj = projectOntoPolyline(station, route.polyline, cum);

@@ -2,10 +2,18 @@ import { describe, expect, it } from "vitest";
 import { SAMPLE_ROUTES } from "@/lib/data/sample-routes";
 import { MockRouteProvider } from "@/lib/providers/mock/route-provider";
 import { MockStationProvider } from "@/lib/providers/mock/station-provider";
+import type { RouteProvider } from "@/lib/providers/types";
 import { DEFAULT_PREFERENCES, DEFAULT_VEHICLE } from "./fixtures";
+import { haversineM } from "./geo";
 import { nearbySearchRoute } from "./nearby";
-import { buildRefuelPlan } from "./plan";
-import type { Preferences, Vehicle } from "./types";
+import { buildRefuelPlan, type PlanOptions } from "./plan";
+import type {
+  Detour,
+  NamedPlace,
+  Preferences,
+  Station,
+  Vehicle,
+} from "./types";
 
 
 const providers = {
@@ -383,5 +391,105 @@ describe("이 자리 주변 검색", () => {
     expect(result.best!.litersToBuy).toBeGreaterThan(1);
     expect(result.itinerary).toEqual([]);
     expect(result.verdict).not.toBe("no-refuel-needed");
+  });
+
+  /**
+   * 편도 실도로 경로를 아는 길찾기.
+   *
+   * `factor`로 실제 도로가 직선보다 얼마나 도는지를 정한다. 1.0은 곧게 뻗은
+   * 길, 즉 도시부 어림 계수보다 짧은 경우다.
+   */
+  class LegRouteProvider implements RouteProvider {
+    readonly id = "legs";
+    readonly label = "편도 길찾기";
+    readonly isLive = true;
+
+    private readonly inner = new MockRouteProvider();
+    findRoute = this.inner.findRoute.bind(this.inner);
+    detourShape = this.inner.detourShape.bind(this.inner);
+    computeDetours = this.inner.computeDetours.bind(this.inner);
+
+    constructor(private readonly factor = 1.4) {}
+
+    async computeLegs(
+      origin: NamedPlace,
+      stations: Station[],
+    ): Promise<Map<string, Detour>> {
+      const out = new Map<string, Detour>();
+      for (const station of stations) {
+        const straightM = haversineM(origin, station);
+        const distanceM = straightM * this.factor;
+        out.set(station.id, {
+          extraDistanceM: distanceM,
+          extraDurationS: (distanceM / 1000 / 25) * 3600,
+          extraTollKrw: 0,
+          alongRouteM: 0,
+          offRouteM: straightM,
+          joinPoint: origin,
+          source: "routing-api",
+          // 직선이 아니라 꺾이는 형상. 지도에 그대로 그린다.
+          viaPolyline: [
+            origin,
+            {
+              lat: (origin.lat + station.lat) / 2 + 0.004,
+              lng: (origin.lng + station.lng) / 2,
+            },
+            { lat: station.lat, lng: station.lng },
+          ],
+        });
+      }
+      return out;
+    }
+  }
+
+  const ORIGIN: NamedPlace = { name: "서울시청", lat: 37.5663, lng: 126.9779 };
+
+  function nearbyPlan(routes: RouteProvider, options: PlanOptions = {}) {
+    return buildRefuelPlan(
+      {
+        route: nearbySearchRoute(ORIGIN),
+        vehicle: DEFAULT_VEHICLE,
+        preferences: {
+          ...DEFAULT_PREFERENCES,
+          fillPolicy: { mode: "toDestination" },
+          maxDetourKm: 5,
+          maxDetourMin: 20,
+        },
+        departAt: DEPART_AT,
+        nearby: true,
+      },
+      { stations: new MockStationProvider(), routes },
+      options,
+    );
+  }
+
+  it("길찾기가 있으면 주유소까지 가는 길을 실도로로 잡는다", async () => {
+    const result = await nearbyPlan(new LegRouteProvider());
+
+    expect(result.options.length).toBeGreaterThan(0);
+    for (const option of result.options) {
+      expect(option.detour.source).toBe("routing-api");
+      // 출발지와 주유소를 잇는 두 점짜리 직선이면 도로를 못 받아온 것이다.
+      expect(option.detour.viaPolyline!.length).toBeGreaterThan(2);
+      expect(option.detour.extraDistanceM).toBeGreaterThan(
+        option.detour.offRouteM,
+      );
+    }
+  });
+
+  it("실도로가 어림값보다 짧아도 가지치기가 최적안을 버리지 않는다", async () => {
+    // 어림 계수(1.25)보다 짧은 길. 하한값을 어림값으로 잡으면 여기서 깨진다.
+    const pruned = await nearbyPlan(new LegRouteProvider(1));
+    const exhaustive = await nearbyPlan(new LegRouteProvider(1), {
+      maxExactCandidates: Number.POSITIVE_INFINITY,
+      disablePruning: true,
+    });
+
+    expect(exhaustive.best).not.toBeNull();
+    expect(pruned.best!.station.id).toBe(exhaustive.best!.station.id);
+    expect(pruned.best!.normalizedCostKrw).toBeCloseTo(
+      exhaustive.best!.normalizedCostKrw,
+      6,
+    );
   });
 });
