@@ -30,6 +30,13 @@ interface Props {
   /** 0이면 접힌 상태. 그 외에는 세로 배분 비율 */
   ratio: number;
   onChange: (ratio: number) => void;
+  /**
+   * 접기와 펴기를 오간다.
+   *
+   * 접기 전 높이를 기억하는 일은 이 손잡이 밖에서 한다. 아래 탭 막대도 같은
+   * 자리로 되돌려야 하는데, 기억이 여기 있으면 두 벌이 생긴다.
+   */
+  onToggle: () => void;
   /** 높이를 재는 기준이 되는 세로 배치 컨테이너 */
   containerRef: React.RefObject<HTMLDivElement | null>;
   /** 접혀 있을 때 손잡이에 남길 한 줄 요약 */
@@ -40,13 +47,12 @@ interface Props {
 export function SheetHandle({
   ratio,
   onChange,
+  onToggle,
   containerRef,
   label,
   className,
 }: Props) {
   const dragRef = useRef<{ y: number; travel: number } | null>(null);
-  /** 접기 전 높이. 다시 펼 때 그 자리로 돌려놓는다. */
-  const lastOpenRef = useRef(ratio > 0 ? ratio : SHEET_DEFAULT_RATIO);
   const open = ratio > 0;
 
   const ratioAt = (clientY: number): number => {
@@ -69,7 +75,6 @@ export function SheetHandle({
     drag.travel = Math.max(drag.travel, Math.abs(event.clientY - drag.y));
     if (drag.travel < TAP_SLOP_PX) return;
     const next = ratioAt(event.clientY);
-    if (next > 0) lastOpenRef.current = next;
     if (next !== ratio) onChange(next);
   };
 
@@ -80,18 +85,12 @@ export function SheetHandle({
     const drag = dragRef.current;
     dragRef.current = null;
     if (!drag || drag.travel >= TAP_SLOP_PX) return;
-    toggle();
-  };
-
-  const toggle = () => {
-    onChange(open ? 0 : lastOpenRef.current);
+    onToggle();
   };
 
   const nudge = (delta: number) => {
     const raw = Math.min(ratio + delta, SHEET_MAX_RATIO);
-    const next = raw < SHEET_MIN_RATIO ? 0 : raw;
-    if (next > 0) lastOpenRef.current = next;
-    onChange(next);
+    onChange(raw < SHEET_MIN_RATIO ? 0 : raw);
   };
 
   const Chevron = open ? ChevronDown : ChevronUp;
@@ -109,7 +108,7 @@ export function SheetHandle({
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          toggle();
+          onToggle();
           return;
         }
         if (event.key === "ArrowUp" || event.key === "ArrowDown") {

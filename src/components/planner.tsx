@@ -10,6 +10,7 @@ import {
   Map as MapIcon,
   Minus,
   Plus,
+  Route as RouteIcon,
   Search,
   SlidersHorizontal,
 } from "lucide-react";
@@ -21,8 +22,8 @@ import {
   SCALE_MIN,
   SCALE_STEP,
 } from "@/components/pinch-scale";
-import { PlaceSearch } from "@/components/place-search";
 import { ResultPanel } from "@/components/result-panel";
+import { SearchPanel } from "@/components/search-panel";
 import { SettingsPanel } from "@/components/settings-panel";
 import { SHEET_DEFAULT_RATIO, SheetHandle } from "@/components/sheet-handle";
 import { SwipePages } from "@/components/swipe-pages";
@@ -61,6 +62,7 @@ import type {
 import { perLiter, stationHeading } from "@/lib/format";
 import { fetchPlan, reverseGeocodePlace, type PlanResponse } from "@/lib/plan-client";
 import { changedSettingLabels } from "@/lib/settings-diff";
+import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 
 const RouteMap = dynamic(() => import("@/components/route-map"), {
@@ -72,7 +74,30 @@ interface Props {
   routes: Route[];
 }
 
-type Tab = "result" | "settings";
+/**
+ * 아래 패널이 보여 줄 쪽.
+ *
+ * `search`는 폰 배치에만 있다. 넓은 화면에서는 같은 입력이 지도 위 카드로
+ * 떠 있어서, 패널에까지 두면 같은 것이 두 군데가 된다.
+ */
+type Tab = "result" | "settings" | "search";
+
+const PHONE_TABS: Tab[] = ["result", "settings", "search"];
+const WIDE_TABS: Tab[] = ["result", "settings"];
+
+const TAB_META: Record<Tab, { label: string; icon: typeof MapIcon }> = {
+  result: { label: "추천 결과", icon: MapIcon },
+  settings: { label: "차량·조건", icon: SlidersHorizontal },
+  search: { label: "경로 찾기", icon: RouteIcon },
+};
+
+/**
+ * 폰에서 아래 탭 막대가 차지하는 높이 (px).
+ *
+ * 떠 있는 "변경사항 적용" 카드를 그 위로 밀어 두는 데만 쓴다. 막대의 실제
+ * 높이는 아래 JSX가 정하므로, 그 여백을 바꾸면 이 값도 같이 봐야 한다.
+ */
+const PHONE_TAB_BAR_PX = 56;
 
 function initialPlannerState(routes: Route[]) {
   const session = loadSession();
@@ -138,6 +163,18 @@ export function Planner({ routes }: Props) {
   const [sheetRatio, setSheetRatio] = useState(
     () => boot.layout.sheetRatio ?? SHEET_DEFAULT_RATIO,
   );
+  /**
+   * 접기 전 높이. 다시 펼 때 그 자리로 돌려놓는다.
+   *
+   * 손잡이로 끌어 접든 탭을 다시 눌러 접든 같은 자리로 돌아와야 하므로,
+   * 기억은 두 곳이 함께 보는 여기에 둔다.
+   */
+  const openRatioRef = useRef(
+    sheetRatio > 0 ? sheetRatio : SHEET_DEFAULT_RATIO,
+  );
+  useEffect(() => {
+    if (sheetRatio > 0) openRatioRef.current = sheetRatio;
+  }, [sheetRatio]);
   const layoutRef = useRef<HTMLDivElement>(null);
   const [mapPick, setMapPick] = useState<"origin" | "destination" | null>(null);
   const [userLocation, setUserLocation] = useState<LatLng | null>(null);
@@ -151,6 +188,39 @@ export function Planner({ routes }: Props) {
    */
   const [priority, setPriority] = useState<{ id: string; key: string } | null>(
     null,
+  );
+
+  /*
+    폰 배치인지 넓은 배치인지는 대부분 CSS(`lg:`)로 가른다. 여기까지 올린
+    것은 아래 패널에 몇 쪽이 들어가는지가 스와이프가 어디까지 넘어가는지를
+    정하기 때문이다. 그건 보이고 안 보이고가 아니라 동작이다.
+  */
+  const phoneLayout = useMediaQuery(PHONE_LAYOUT);
+  const tabs = phoneLayout ? PHONE_TABS : WIDE_TABS;
+  /* 폰에서 경로 쪽을 보다가 화면이 넓어지면 갈 곳이 없다. 결과로 돌려보낸다. */
+  const activeTab: Tab = tabs.includes(tab) ? tab : "result";
+  const collapsed = phoneLayout && sheetRatio === 0;
+
+  const toggleSheet = useCallback(() => {
+    setSheetRatio((current) => (current > 0 ? 0 : openRatioRef.current));
+  }, []);
+
+  /**
+   * 아래 탭을 눌렀을 때.
+   *
+   * 폰에서는 이 막대가 패널을 여닫는 유일한 손잡이이기도 하다. 접혀 있으면
+   * 누른 쪽으로 펴고, 펴진 채로 지금 보고 있는 쪽을 다시 누르면 접는다.
+   * 지도를 잠깐 넓게 보려고 접었다 펴는 일이 가장 잦아서, 그 왕복을 같은
+   * 버튼 안에 둔다.
+   */
+  const selectTab = useCallback(
+    (next: Tab) => {
+      setTab(next);
+      if (!phoneLayout) return;
+      if (sheetRatio === 0) setSheetRatio(openRatioRef.current);
+      else if (next === activeTab) setSheetRatio(0);
+    },
+    [phoneLayout, sheetRatio, activeTab],
   );
 
   const requestSeq = useRef(0);
@@ -430,6 +500,39 @@ export function Planner({ routes }: Props) {
     [mapPick],
   );
 
+  /**
+   * 지도를 눌러 좌표를 찍는 모드로 들어간다.
+   *
+   * 폰에서는 아래 패널이 지도를 절반쯤 덮는다. 찍으라고 해 놓고 찍을 자리를
+   * 가려 두면 안 되므로, 지정을 시작할 때 패널을 내려 준다.
+   */
+  const requestMapPick = useCallback(
+    (next: "origin" | "destination" | null) => {
+      setMapPick(next);
+      if (next && phoneLayout) setSheetRatio(0);
+    },
+    [phoneLayout],
+  );
+
+  /* 지도 위 카드와 아래 패널이 같은 입력을 쓴다. 넘길 것을 한 군데 모은다. */
+  const searchControls = {
+    searchMode,
+    onSearchModeChange: (mode: "route" | "nearby") => {
+      setSearchMode(mode);
+      // 목적지가 없는 모드로 가면, 목적지를 찍으려던 참이었어도 찍을 곳이 없다.
+      setMapPick((current) =>
+        mode === "route" ? null : current === "destination" ? null : current,
+      );
+    },
+    origin,
+    destination,
+    onOriginChange: setOrigin,
+    onDestinationChange: setDestination,
+    mapPick,
+    onMapPickChange: requestMapPick,
+    onLocated: (lat: number, lng: number) => setUserLocation({ lat, lng }),
+  };
+
   const plan = data?.plan ?? null;
   const isSample = data?.dataMode !== "live";
   const pendingChanges = changedSettingLabels(
@@ -542,11 +645,14 @@ export function Planner({ routes }: Props) {
             }
           />
           {/*
-            지도 위에 겹쳐 둔 검색창은 폰에서 화면 위쪽을 넓게 가린다. 두
-            손가락으로 지도를 벌려 보려면 치울 수 있어야 하므로 접을 수 있게
+            지도 위에 겹쳐 둔 검색창은 넓은 화면에서만 쓴다. 폰에서는 같은
+            입력이 아래 패널의 "경로 찾기" 쪽으로 들어간다. 좁은 화면에서
+            지도를 반쯤 가리는 카드는 얻는 것보다 잃는 것이 크다.
+
+            넓은 화면에서도 지도를 넓게 보고 싶을 때가 있으므로 접을 수 있게
             둔다. 접으면 출발·도착만 남은 알약이 되고, 누르면 다시 펴진다.
           */}
-          {!searchOpen && (
+          {!phoneLayout && !searchOpen && (
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
@@ -557,126 +663,70 @@ export function Planner({ routes }: Props) {
               <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
             </button>
           )}
-          <PinchScale
-            scale={cardScale}
-            onScaleChange={setCardScale}
-            maxWidth="20.5rem"
-            inset="1.5rem"
-            className={cn(
-              "pointer-events-auto absolute top-3 left-3 z-[var(--layer-map-control)] space-y-2 rounded-xl border border-border bg-background/92 p-3 shadow-lg backdrop-blur",
-              !searchOpen && "hidden",
-            )}
-          >
-            <div className="flex items-center gap-1">
-              <div className="grid flex-1 grid-cols-2 gap-1 rounded-lg bg-input/30 p-0.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchMode("route");
-                    setMapPick(null);
-                  }}
-                  className={cn(
-                    "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-                    searchMode === "route"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  경로에서
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchMode("nearby");
-                    setMapPick((current) =>
-                      current === "destination" ? null : current,
-                    );
-                  }}
-                  className={cn(
-                    "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-                    searchMode === "nearby"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  이 자리에서
-                </button>
-              </div>
-              {/*
-                두 손가락으로 카드를 집어 키울 수 있지만, 마우스에는 그런
-                동작이 없다. 같은 일을 하는 버튼을 함께 둔다.
-              */}
-              <button
-                type="button"
-                aria-label="검색창 작게"
-                disabled={cardScale <= SCALE_MIN}
-                onClick={() => setCardScale(clampScale(cardScale - SCALE_STEP))}
-                className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-input/40 hover:text-foreground disabled:opacity-35"
-              >
-                <Minus className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                aria-label="검색창 크게"
-                disabled={cardScale >= SCALE_MAX}
-                onClick={() => setCardScale(clampScale(cardScale + SCALE_STEP))}
-                className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-input/40 hover:text-foreground disabled:opacity-35"
-              >
-                <Plus className="size-3.5" />
-              </button>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
+          {!phoneLayout && (
+            <PinchScale
+              scale={cardScale}
+              onScaleChange={setCardScale}
+              maxWidth="20.5rem"
+              inset="1.5rem"
+              className={cn(
+                "pointer-events-auto absolute top-3 left-3 z-[var(--layer-map-control)] rounded-xl border border-border bg-background/92 p-3 shadow-lg backdrop-blur",
+                !searchOpen && "hidden",
+              )}
+            >
+              <SearchPanel
+                {...searchControls}
+                idPrefix="map"
+                actions={
+                  <>
+                    {/*
+                      두 손가락으로 카드를 집어 키울 수 있지만, 마우스에는
+                      그런 동작이 없다. 같은 일을 하는 버튼을 함께 둔다.
+                    */}
                     <button
                       type="button"
-                      aria-label="검색창 접기"
-                      onClick={() => setSearchOpen(false)}
-                      className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-input/40 hover:text-foreground"
+                      aria-label="검색창 작게"
+                      disabled={cardScale <= SCALE_MIN}
+                      onClick={() =>
+                        setCardScale(clampScale(cardScale - SCALE_STEP))
+                      }
+                      className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-input/40 hover:text-foreground disabled:opacity-35"
                     >
-                      <ChevronUp className="size-4" />
+                      <Minus className="size-3.5" />
                     </button>
-                  }
-                />
-                <TooltipContent>
-                  접어서 지도 넓게 보기. 두 손가락으로 집으면 크기가 바뀝니다.
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <PlaceSearch
-              id="map-origin"
-              label={searchMode === "nearby" ? "위치" : "출발"}
-              value={origin}
-              onChange={(place) => {
-                setOrigin(place);
-                setMapPick(null);
-              }}
-              allowGeolocation
-              onLocated={(lat, lng) => setUserLocation({ lat, lng })}
-              mapPickActive={mapPick === "origin"}
-              onRequestMapPick={() =>
-                setMapPick((current) => (current === "origin" ? null : "origin"))
-              }
-            />
-            {searchMode === "route" && (
-              <PlaceSearch
-                id="map-destination"
-                label="도착"
-                value={destination}
-                onChange={(place) => {
-                  setDestination(place);
-                  setMapPick(null);
-                }}
-                allowGeolocation
-                onLocated={(lat, lng) => setUserLocation({ lat, lng })}
-                mapPickActive={mapPick === "destination"}
-                onRequestMapPick={() =>
-                  setMapPick((current) =>
-                    current === "destination" ? null : "destination",
-                  )
+                    <button
+                      type="button"
+                      aria-label="검색창 크게"
+                      disabled={cardScale >= SCALE_MAX}
+                      onClick={() =>
+                        setCardScale(clampScale(cardScale + SCALE_STEP))
+                      }
+                      className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-input/40 hover:text-foreground disabled:opacity-35"
+                    >
+                      <Plus className="size-3.5" />
+                    </button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            aria-label="검색창 접기"
+                            onClick={() => setSearchOpen(false)}
+                            className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-input/40 hover:text-foreground"
+                          >
+                            <ChevronUp className="size-4" />
+                          </button>
+                        }
+                      />
+                      <TooltipContent>
+                        접어서 지도 넓게 보기. 두 손가락으로 집으면 크기가 바뀝니다.
+                      </TooltipContent>
+                    </Tooltip>
+                  </>
                 }
               />
-            )}
-          </PinchScale>
+            </PinchScale>
+          )}
           <div className="pointer-events-none absolute top-3 right-3 z-[var(--layer-map-control)] hidden flex-col gap-1 rounded-lg border border-border bg-background/85 px-2.5 py-2 text-[11px] backdrop-blur sm:flex">
             {searchMode === "route" && (
               <Legend color="#60a5fa" label="본선 경로" />
@@ -711,36 +761,41 @@ export function Planner({ routes }: Props) {
           <SheetHandle
             ratio={sheetRatio}
             onChange={setSheetRatio}
+            onToggle={toggleSheet}
             containerRef={layoutRef}
             label={sheetSummary}
-            className="shrink-0 lg:hidden"
+            className={cn("shrink-0 lg:hidden", collapsed && "hidden")}
           />
+
+          {/*
+            폰에서는 이 막대가 화면 맨 아래에 놓인다. 엄지가 닿는 자리이고,
+            접었을 때 남는 것도 이 막대뿐이다. 넓은 화면에서는 옆에 세워진
+            패널의 머리말이므로 위로 올라간다.
+          */}
           <div
             className={cn(
-              "flex shrink-0 gap-1 border-b border-border p-2",
-              sheetRatio === 0 && "hidden lg:flex",
+              "flex shrink-0 gap-1 border-border p-2",
+              phoneLayout
+                ? "order-last border-t pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+                : "border-b",
             )}
           >
-            <TabButton
-              active={tab === "result"}
-              onClick={() => setTab("result")}
-              icon={MapIcon}
-            >
-              추천 결과
-            </TabButton>
-            <TabButton
-              active={tab === "settings"}
-              onClick={() => setTab("settings")}
-              icon={SlidersHorizontal}
-            >
-              차량·조건
-            </TabButton>
+            {tabs.map((name) => (
+              <TabButton
+                key={name}
+                active={!collapsed && name === activeTab}
+                onClick={() => selectTab(name)}
+                icon={TAB_META[name].icon}
+              >
+                {TAB_META[name].label}
+              </TabButton>
+            ))}
           </div>
 
           <SwipePages
-            index={tab === "result" ? 0 : 1}
-            onIndexChange={(next) => setTab(next === 0 ? "result" : "settings")}
-            className={cn(sheetRatio === 0 && "hidden lg:block")}
+            index={tabs.indexOf(activeTab)}
+            onIndexChange={(next) => setTab(tabs[next])}
+            className={cn(collapsed && "hidden")}
           >
             <ResultPanel
               plan={plan}
@@ -762,11 +817,15 @@ export function Planner({ routes }: Props) {
                 setDraftPreferences((current) => ({ ...current, ...patch }))
               }
             />
+            {phoneLayout && (
+              <SearchPanel {...searchControls} idPrefix="sheet" />
+            )}
           </SwipePages>
         </aside>
       </div>
 
       <ApplyDock
+        bottomInset={phoneLayout ? PHONE_TAB_BAR_PX : 0}
         labels={pendingChanges}
         onApply={() => {
           setVehicle(draftVehicle);

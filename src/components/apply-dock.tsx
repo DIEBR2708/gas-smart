@@ -23,9 +23,18 @@ interface Position {
   y: number;
 }
 
-function clamp(x: number, y: number, width: number, height: number): Position {
+function clamp(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  bottomInset: number,
+): Position {
   const maxX = Math.max(EDGE_MARGIN, window.innerWidth - width - EDGE_MARGIN);
-  const maxY = Math.max(EDGE_MARGIN, window.innerHeight - height - EDGE_MARGIN);
+  const maxY = Math.max(
+    EDGE_MARGIN,
+    window.innerHeight - height - EDGE_MARGIN - bottomInset,
+  );
   return {
     x: Math.min(Math.max(x, EDGE_MARGIN), maxX),
     y: Math.min(Math.max(y, EDGE_MARGIN), maxY),
@@ -33,13 +42,14 @@ function clamp(x: number, y: number, width: number, height: number): Position {
 }
 
 /** 처음에는 오른쪽 아래. 지도와 결과 목록 위쪽을 되도록 비워 둔다. */
-function defaultPosition(): Position {
+function defaultPosition(bottomInset: number): Position {
   if (typeof window === "undefined") return { x: EDGE_MARGIN, y: EDGE_MARGIN };
   return clamp(
     window.innerWidth - ASSUMED_WIDTH - 20,
     window.innerHeight - 132,
     ASSUMED_WIDTH,
     112,
+    bottomInset,
   );
 }
 
@@ -48,13 +58,26 @@ interface Props {
   labels: string[];
   onApply: () => void;
   onRevert: () => void;
+  /**
+   * 화면 아래에서 비워 둘 높이 (px).
+   *
+   * 폰에서는 맨 아래를 탭 막대가 차지한다. 카드가 그 위에 얹히면 조건을
+   * 바꾸는 동안 쪽을 넘길 수 없다. 카드는 끌어 옮길 수 있지만, 옮겨야만
+   * 쓸 수 있는 자리에 처음부터 놓아 둘 이유는 없다.
+   */
+  bottomInset?: number;
 }
 
-export function ApplyDock({ labels, onApply, onRevert }: Props) {
+export function ApplyDock({
+  labels,
+  onApply,
+  onRevert,
+  bottomInset = 0,
+}: Props) {
   const cardRef = useRef<HTMLDivElement>(null);
   const grabRef = useRef<{ dx: number; dy: number } | null>(null);
   const [position, setPosition] = useState<Position>(
-    () => loadDockPosition() ?? defaultPosition(),
+    () => loadDockPosition() ?? defaultPosition(bottomInset),
   );
 
   useEffect(() => {
@@ -62,12 +85,18 @@ export function ApplyDock({ labels, onApply, onRevert }: Props) {
       const card = cardRef.current;
       if (!card) return;
       setPosition((current) =>
-        clamp(current.x, current.y, card.offsetWidth, card.offsetHeight),
+        clamp(
+          current.x,
+          current.y,
+          card.offsetWidth,
+          card.offsetHeight,
+          bottomInset,
+        ),
       );
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, []);
+  }, [bottomInset]);
 
   const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     const card = cardRef.current;
@@ -88,6 +117,7 @@ export function ApplyDock({ labels, onApply, onRevert }: Props) {
         event.clientY - grab.dy,
         card.offsetWidth,
         card.offsetHeight,
+        bottomInset,
       ),
     );
   };
@@ -121,6 +151,7 @@ export function ApplyDock({ labels, onApply, onRevert }: Props) {
       position.y + move.y,
       card.offsetWidth,
       card.offsetHeight,
+      bottomInset,
     );
     setPosition(next);
     saveDockPosition(next);
