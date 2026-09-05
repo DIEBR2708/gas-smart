@@ -61,3 +61,6 @@ next-env.d.ts
 /android/app/src/main/assets/public
 /android/app/src/main/assets/capacitor.config.json
 /android/app/src/main/assets/capacitor.plugins.json
+# 릴리스 서명 키. 공개되면 누구든 같은 앱으로 인식되는 업데이트를 만들 수 있다.
+/android/*.jks
+/android/keystore.properties

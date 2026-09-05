@@ -79,12 +79,39 @@ Capacitor로 APK를 뽑을 수 있습니다. **서버 없이 앱 혼자 돕니�
 오피넷과 카카오를 직접 부르고 계산도 기기 안에서 합니다.
 
 ```bash
-npm run apk
-# → android/app/build/outputs/apk/debug/app-debug.apk
+npm run apk            # → android/app/build/outputs/apk/debug/app-debug.apk
+npm run apk:release    # → android/app/build/outputs/apk/release/app-release.apk
 ```
 
 빌드하려면 JDK 21과 Android SDK(platform 36, build-tools 36)가 필요하고,
 `android/local.properties`에 `sdk.dir=<SDK 경로>`가 있어야 합니다.
+
+### 릴리스 서명
+
+안드로이드는 서명 없는 APK를 설치하지 않습니다. `npm run apk:release`를 쓰려면
+키스토어를 먼저 만들어야 합니다. 한 번만 하면 됩니다.
+
+```bash
+cd android
+keytool -genkeypair -v -keystore fuel-planner-release.jks \
+  -alias fuel-planner -keyalg RSA -keysize 4096 -validity 10000
+
+cat > keystore.properties <<'EOF'
+storeFile=fuel-planner-release.jks
+storePassword=여기에_비밀번호
+keyAlias=fuel-planner
+keyPassword=여기에_비밀번호
+EOF
+```
+
+**이 두 파일은 git에 올리지 마세요**(`.gitignore`에 넣어 뒀습니다). 서명 키가
+공개되면 누구든 이 앱의 업데이트로 인식되는 APK를 만들 수 있습니다.
+
+**그리고 잃어버리지 마세요.** 안드로이드는 서명이 다른 APK를 같은 앱의 업데이트로
+받지 않습니다. 키가 바뀌면 사용자가 기존 앱을 지우고 새로 설치해야 합니다.
+
+키스토어가 없으면 `assembleRelease`는 서명 없는 APK를 만들고(설치 불가),
+`npm run apk`(디버그)는 평소대로 동작합니다.
 
 APK에서 실데이터를 쓰려면 `.env.local`에 `NEXT_PUBLIC_` 접두사가 붙은 키도
 넣어야 합니다. 값은 위와 같습니다.

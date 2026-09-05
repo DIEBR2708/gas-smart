@@ -1,5 +1,23 @@
 apply plugin: 'com.android.application'
 
+/*
+    릴리스 APK 서명.
+
+    안드로이드는 서명 없는 APK를 설치하지 않는다. 서명 정보는 keystore.properties
+    에서 읽고 그 파일과 키스토어는 git에 넣지 않는다. 키가 공개되면 누구든 같은
+    앱으로 인식되는 업데이트를 만들 수 있다.
+
+    파일이 없으면 서명 설정을 아예 만들지 않는다. 그러면 assembleRelease는
+    서명 없는 APK를 뱉고(설치 불가), assembleDebug는 평소대로 동작한다.
+    키스토어 만드는 법은 README에 있다.
+*/
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+def hasKeystore = keystorePropertiesFile.exists()
+if (hasKeystore) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "kr.fuelplanner.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +34,26 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasKeystore) {
+            release {
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasKeystore) {
+                signingConfig signingConfigs.release
+            }
+            /*
+                난독화는 끈 채로 둔다. 웹뷰 앱이라 자바 코드가 거의 없어 줄어드는
+                양이 미미한데, Capacitor 플러그인은 리플렉션으로 브리지를 찾기
+                때문에 규칙을 잘못 쓰면 조용히 깨진다. 얻는 것보다 위험이 크다.
+            */
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

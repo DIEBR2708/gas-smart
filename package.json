@@ -9,6 +9,7 @@
     "build:app": "node scripts/build-app.mjs",
     "sync:app": "npm run build:app && npx cap sync android",
     "apk": "npm run sync:app && cd android && ./gradlew assembleDebug",
+    "apk:release": "npm run sync:app && cd android && ./gradlew assembleRelease",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
