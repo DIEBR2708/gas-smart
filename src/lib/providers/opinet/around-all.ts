@@ -11,6 +11,16 @@ const KATEC =
 const WGS84 = "EPSG:4326";
 const BASE_URL = "https://www.opinet.co.kr/api";
 
+/**
+ * 인증키를 넘기는 파라미터 이름은 `code`다. `certkey`가 아니다.
+ *
+ * 오피넷은 이름이 틀린 요청을 거절하지 않는다. HTTP 200에 `{"RESULT":{"OIL":[]}}`,
+ * 즉 "그 근처에 주유소가 없다"와 완전히 같은 응답을 준다. 그래서 이름을 잘못
+ * 쓰면 전국 어디를 찍어도 결과가 0건이고, 앱은 조용히 합성 데이터로 내려앉는다.
+ * 실제로 그 상태로 한동안 굴러갔다.
+ */
+export const CERT_KEY_PARAM = "code";
+
 export function wgs84ToKatec(p: LatLng): { x: number; y: number } {
   const [x, y] = proj4(WGS84, KATEC, [p.lng, p.lat]);
   return { x, y };
@@ -57,7 +67,7 @@ export async function fetchAroundAll(
   const { x, y } = wgs84ToKatec(center);
   const url = new URL(`${BASE_URL}/aroundAll.do`);
   url.searchParams.set("out", "json");
-  url.searchParams.set("certkey", certKey);
+  url.searchParams.set(CERT_KEY_PARAM, certKey);
   url.searchParams.set("x", x.toFixed(1));
   url.searchParams.set("y", y.toFixed(1));
   url.searchParams.set("radius", String(radiusM));

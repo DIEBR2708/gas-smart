@@ -6,6 +6,7 @@ import { haversineM } from "@/lib/domain/geo";
 import type { FuelKind, Route, Station } from "@/lib/domain/types";
 import { OPINET_PROD_CODE } from "@/lib/domain/types";
 import { fetchOutbound, mapPool } from "@/lib/http";
+import { CERT_KEY_PARAM } from "./around-all";
 import { kstDateKey } from "./daily-catalog";
 import { startOpinetDailyPrefetch } from "./fetch-queue";
 import type { StationProvider, StationQuery } from "../types";
@@ -135,7 +136,7 @@ export class OpinetStationProvider implements StationProvider {
   private async fetchDetail(uniId: string): Promise<DetailRow | null> {
     const url = new URL(`${BASE_URL}/detailById.do`);
     url.searchParams.set("out", "json");
-    url.searchParams.set("certkey", this.certKey);
+    url.searchParams.set(CERT_KEY_PARAM, this.certKey);
     url.searchParams.set("id", uniId);
     const res = await fetchOutbound(url, { timeoutMs: 5_000 });
     if (!res.ok) return null;
