@@ -2,11 +2,20 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FlaskConical, Loader2, Map as MapIcon, SlidersHorizontal } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  FlaskConical,
+  Loader2,
+  Map as MapIcon,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
 import { ApplyDock } from "@/components/apply-dock";
 import { PlaceSearch } from "@/components/place-search";
 import { ResultPanel } from "@/components/result-panel";
 import { SettingsPanel } from "@/components/settings-panel";
+import { SheetHandle } from "@/components/sheet-handle";
 import { SwipePages } from "@/components/swipe-pages";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +47,7 @@ import type {
   Route,
   Vehicle,
 } from "@/lib/domain/types";
+import { perLiter, stationHeading } from "@/lib/format";
 import { fetchPlan, reverseGeocodePlace, type PlanResponse } from "@/lib/plan-client";
 import { changedSettingLabels } from "@/lib/settings-diff";
 import { cn } from "@/lib/utils";
@@ -108,6 +118,9 @@ export function Planner({ routes }: Props) {
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("result");
+  /* 폰에서만 의미가 있다. lg 이상에서는 지도와 패널이 나란히 놓인다. */
+  const [searchOpen, setSearchOpen] = useState(true);
+  const [sheetOpen, setSheetOpen] = useState(true);
   const [mapPick, setMapPick] = useState<"origin" | "destination" | null>(null);
   const [userLocation, setUserLocation] = useState<LatLng | null>(null);
   const [previewRoute, setPreviewRoute] = useState<Route | null>(null);
@@ -396,6 +409,18 @@ export function Planner({ routes }: Props) {
     { vehicle, preferences },
     { vehicle: draftVehicle, preferences: draftPreferences },
   );
+  const searchSummary =
+    searchMode === "nearby"
+      ? (origin?.name ?? "위치 지정")
+      : `${origin?.name ?? "출발"} → ${destination?.name ?? "도착"}`;
+  const sheetSummary = plan?.best
+    ? `${perLiter(plan.best.effectivePriceKrwPerL)} · ${stationHeading(
+        plan.best.station.name,
+        plan.best.station.brand,
+      )}`
+    : loading
+      ? "계산 중"
+      : (error ?? "추천 결과");
 
   return (
     <div className="flex h-dvh min-h-0 flex-col overflow-hidden">
@@ -466,7 +491,16 @@ export function Planner({ routes }: Props) {
             {searchMode === "nearby" ? "주변 주유소 찾는 중" : "경로 로드중"}
           </div>
         </div>
-        <div className="relative h-[42dvh] min-h-[220px] shrink-0 lg:h-auto lg:min-h-0 lg:flex-1">
+        <div
+          className={cn(
+            "relative min-h-[220px] lg:h-auto lg:min-h-0 lg:flex-1",
+            /*
+              패널을 내리면 지도가 남은 자리를 전부 가져간다. Leaflet은
+              컨테이너 크기 변화를 ResizeObserver로 받아 스스로 다시 그린다.
+            */
+            sheetOpen ? "h-[42dvh] shrink-0" : "h-auto flex-1 lg:flex-1",
+          )}
+        >
           <RouteMap
             route={displayRoute}
             options={plan?.options ?? []}
@@ -481,40 +515,78 @@ export function Planner({ routes }: Props) {
               (origin?.name === "현재 위치" ? origin : null)
             }
           />
-          <div className="pointer-events-auto absolute top-3 left-3 z-[var(--layer-map-control)] w-[min(calc(100%-1.5rem),20.5rem)] space-y-2 rounded-xl border border-border bg-background/92 p-3 shadow-lg backdrop-blur">
-            <div className="grid grid-cols-2 gap-1 rounded-lg bg-input/30 p-0.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchMode("route");
-                  setMapPick(null);
-                }}
-                className={cn(
-                  "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-                  searchMode === "route"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                경로에서
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchMode("nearby");
-                  setMapPick((current) =>
-                    current === "destination" ? null : current,
-                  );
-                }}
-                className={cn(
-                  "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-                  searchMode === "nearby"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                이 자리에서
-              </button>
+          {/*
+            지도 위에 겹쳐 둔 검색창은 폰에서 화면 위쪽을 넓게 가린다. 두
+            손가락으로 지도를 벌려 보려면 치울 수 있어야 하므로 접을 수 있게
+            둔다. 접으면 출발·도착만 남은 알약이 되고, 누르면 다시 펴진다.
+          */}
+          {!searchOpen && (
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="pointer-events-auto absolute top-3 left-3 z-[var(--layer-map-control)] flex max-w-[min(calc(100%-1.5rem),20.5rem)] items-center gap-2 rounded-full border border-border bg-background/92 py-2 pr-3 pl-2.5 shadow-lg backdrop-blur"
+            >
+              <Search className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate text-xs font-medium">{searchSummary}</span>
+              <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+            </button>
+          )}
+          <div
+            className={cn(
+              "pointer-events-auto absolute top-3 left-3 z-[var(--layer-map-control)] w-[min(calc(100%-1.5rem),20.5rem)] space-y-2 rounded-xl border border-border bg-background/92 p-3 shadow-lg backdrop-blur",
+              !searchOpen && "hidden",
+            )}
+          >
+            <div className="flex items-center gap-1">
+              <div className="grid flex-1 grid-cols-2 gap-1 rounded-lg bg-input/30 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchMode("route");
+                    setMapPick(null);
+                  }}
+                  className={cn(
+                    "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                    searchMode === "route"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  경로에서
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchMode("nearby");
+                    setMapPick((current) =>
+                      current === "destination" ? null : current,
+                    );
+                  }}
+                  className={cn(
+                    "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                    searchMode === "nearby"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  이 자리에서
+                </button>
+              </div>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label="검색창 접기"
+                      onClick={() => setSearchOpen(false)}
+                      className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-input/40 hover:text-foreground"
+                    >
+                      <ChevronUp className="size-4" />
+                    </button>
+                  }
+                />
+                <TooltipContent>접어서 지도 넓게 보기</TooltipContent>
+              </Tooltip>
             </div>
             <PlaceSearch
               id="map-origin"
@@ -570,8 +642,24 @@ export function Planner({ routes }: Props) {
           </div>
         </div>
 
-        <aside className="flex min-h-0 w-full flex-1 flex-col overflow-hidden border-t border-border lg:w-[420px] lg:flex-none lg:border-t-0 lg:border-l xl:w-[460px]">
-          <div className="flex shrink-0 gap-1 border-b border-border p-2">
+        <aside
+          className={cn(
+            "flex min-h-0 w-full flex-col overflow-hidden border-t border-border lg:w-[420px] lg:flex-none lg:border-t-0 lg:border-l xl:w-[460px]",
+            sheetOpen ? "flex-1" : "shrink-0 lg:flex-none",
+          )}
+        >
+          <SheetHandle
+            open={sheetOpen}
+            onChange={setSheetOpen}
+            label={sheetSummary}
+            className="shrink-0 lg:hidden"
+          />
+          <div
+            className={cn(
+              "flex shrink-0 gap-1 border-b border-border p-2",
+              !sheetOpen && "hidden lg:flex",
+            )}
+          >
             <TabButton
               active={tab === "result"}
               onClick={() => setTab("result")}
@@ -591,6 +679,7 @@ export function Planner({ routes }: Props) {
           <SwipePages
             index={tab === "result" ? 0 : 1}
             onIndexChange={(next) => setTab(next === 0 ? "result" : "settings")}
+            className={cn(!sheetOpen && "hidden lg:block")}
           >
             <ResultPanel
               plan={plan}
