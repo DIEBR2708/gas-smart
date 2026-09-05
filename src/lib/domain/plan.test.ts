@@ -160,11 +160,8 @@ describe("buildRefuelPlan", () => {
     }
   });
 
-  it("모든 후보에 도로 기반이 아님을 알리는 경고가 붙는다", async () => {
+  it("우회를 도로망 없이 추정했음을 메타에 남긴다", async () => {
     const result = await plan();
-    for (const option of result.options) {
-      expect(option.warnings.map((w) => w.code)).toContain("estimated-detour");
-    }
     expect(result.meta.detourSource).toBe("geometric-estimate");
   });
 

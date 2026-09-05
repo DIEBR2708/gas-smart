@@ -592,15 +592,10 @@ function decide(args: {
     };
   }
 
-  const stockUpNote =
-    best.stockUpValueKrw > 500
-      ? ` 이 가운데 ${Math.round(best.stockUpValueKrw).toLocaleString("ko-KR")}원은 이번 여행에 쓰지 않고 탱크에 채워둔 싼 연료의 값입니다.`
-      : "";
-
   return {
     verdict: "detour-worth-it",
     headline: nearby
-      ? `${stationHeading(best.station.name, best.station.brand)}는 제일 가까운 곳보다 가는 거리·시간까지 넣어도 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 쌉니다. ${(best.detour.extraDistanceM / 1000).toFixed(1)}km 가면 됩니다.${stockUpNote}`
-      : `${stationHeading(best.station.name, best.station.brand)}로 ${(best.detour.extraDistanceM / 1000).toFixed(1)}km 우회하면 우회 연료비와 시간까지 계산해도 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 절약됩니다.${stockUpNote}`,
+      ? `${stationHeading(best.station.name, best.station.brand)}는 제일 가까운 곳보다 가는 거리·시간까지 넣어도 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 쌉니다. ${(best.detour.extraDistanceM / 1000).toFixed(1)}km 가면 됩니다.`
+      : `${stationHeading(best.station.name, best.station.brand)}로 ${(best.detour.extraDistanceM / 1000).toFixed(1)}km 우회하면 우회 연료비와 시간까지 계산해도 ${Math.round(best.savingKrw).toLocaleString("ko-KR")}원 절약됩니다.`,
   };
 }

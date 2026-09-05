@@ -268,14 +268,14 @@ export function ResultPanel({
             <div className="flex items-baseline justify-between">
               <h2 className="text-sm font-semibold">후보 비교</h2>
               <span className="text-[11px] text-muted-foreground">
-                절약 · 작게는 실제 지출
+                절약 · 작게는 주유 결제액
               </span>
             </div>
             <ul className="space-y-1.5">
               {plan.options.map((option) => {
                 const active = option.station.id === selected?.station.id;
                 const isBest = option.station.id === plan.best?.station.id;
-                const spend = cashCostKrw(option);
+                const spend = option.outOfPocketKrw;
                 const saving = compareSaving(option, plan.baseline);
                 const isBaseline =
                   plan.baseline?.station.id === option.station.id;

@@ -370,13 +370,6 @@ export function evaluateOption(
       message: "고속도로를 진출했다가 재진입해야 합니다. 통행료와 시간이 추가됩니다.",
     });
   }
-  if (detour.source === "geometric-estimate") {
-    warnings.push({
-      code: "estimated-detour",
-      severity: "info",
-      message: "우회 거리는 도로망이 아닌 기하학적 추정치입니다.",
-    });
-  }
   if (congestion > 1.05) {
     warnings.push({
       code: "congested",

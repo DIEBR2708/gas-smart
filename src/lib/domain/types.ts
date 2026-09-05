@@ -237,7 +237,6 @@ export type WarningCode =
   | "closed-on-arrival"
   | "opposite-side"
   | "highway-exit"
-  | "estimated-detour"
   | "user-reported"
   | "congested";
 
